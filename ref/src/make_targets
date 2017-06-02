@@ -8,8 +8,18 @@ OBJS = \
 	YAML_Doc.o \
 	YAML_Element.o
 
+YAML_FILES = \
+	YAML_Doc.cpp \
+	YAML_Doc.hpp \
+	YAML_Element.cpp \
+	YAML_Element.hpp
+
 UTIL_OBJS = \
 	mX_timer.o
+
+UTIL_FILES = \
+	mX_timer.cpp \
+	mX_timer.h
 
 MAIN_OBJ = \
 	mX_linear_ckt_simulator.o
@@ -18,9 +28,9 @@ MINIXYCE_INFO = 1
 
 vpath %.cpp ../utils
 
-all:common_files generate_info miniXyce.x
+all:common_files miniXyce.x generate_info
 
-miniXyce.x:common_files $(MAIN_OBJ) $(OBJS) $(UTIL_OBJS) $(OPTIONAL_OBJS) *.hpp generate_info
+miniXyce.x:$(MAIN_OBJ) $(OBJS) $(UTIL_OBJS) $(OPTIONAL_OBJS) $(YAML_FILES)
 	$(INSTRUMENT) $(CXX) $(CXXFLAGS) $(CPPFLAGS) $(MAIN_OBJ) $(OBJS) $(UTIL_OBJS) $(OPTIONAL_OBJS) -o miniXyce.x $(LDFLAGS) $(OPTIONAL_LIBS) $(LIBS)
 
 common_files:
@@ -43,7 +53,8 @@ test : all
 	$(CC) $(CFLAGS) $(CPPFLAGS) -c $<
 
 clean:
-	rm -f *.o *.a *.x *.linkinfo miniXyce_info.hpp
+	rm -f *.o *.a *.x *.linkinfo $(YAML_FILES) $(UTIL_FILES) *params.txt miniXyce_info.hpp 
+	rm -rf tests
 
 realclean: clean
 	rm -f gmon.out gprof.* *~ *.yaml 
