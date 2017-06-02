@@ -34,14 +34,14 @@ cp ${dir}/mX_timer.cpp .
 fi
 
 if [ ! -f ./last_used_params.txt ] ; then
-dir=../tests
+dir=../../tests
 cp ${dir}/last_used_params.txt .
 cp ${dir}/default_params.txt .
 
 fi
 
 if [ ! -d ./tests ] ; then
-dir=../tests
+dir=../../tests
 mkdir tests
 cp ${dir}/cir*.net tests/.
 cp ${dir}/RC*.pl tests/.
