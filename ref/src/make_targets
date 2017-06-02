@@ -54,11 +54,10 @@ test : all
 
 clean:
 	rm -f *.o *.a *.x *.linkinfo $(YAML_FILES) $(UTIL_FILES) *params.txt miniXyce_info.hpp 
+
+testclean: clean
 	rm -rf tests
 
-realclean: clean
+realclean: testclean
 	rm -f gmon.out gprof.* *~ *.yaml 
-
-testclean: realclean
-	rm -rf tests
 
