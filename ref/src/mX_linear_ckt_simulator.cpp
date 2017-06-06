@@ -58,7 +58,7 @@ using namespace mX_parms_utils;
 int main(int argc, char* argv[])
 {
 	// this is of course, the actual transient simulator
-	int p=1, pid=0, n=0;
+	int p=1, pid=0;
 #ifdef HAVE_MPI	
 	MPI_Init(&argc,&argv);
 	
@@ -87,10 +87,11 @@ int main(int argc, char* argv[])
 	// build the DAE from the circuit netlist
 
         tstart = mX_timer();
-	int num_internal_nodes, num_voltage_sources, num_inductors;
-        int num_current_sources=0, num_resistors=0, num_capacitors=0;
-	mX_linear_DAE* dae = parse_netlist(ckt_netlist_filename,p,pid,n,num_internal_nodes, num_voltage_sources, num_current_sources,
-                                           num_resistors, num_capacitors, num_inductors);
+	int total_devices, total_unknowns, num_internal_nodes;
+        std::map<std::string, int> device_count;
+
+	mX_linear_DAE* dae = parse_netlist(ckt_netlist_filename,p,pid,total_devices,total_unknowns,num_internal_nodes,device_count);
+
         tend = mX_timer() - tstart;
         doc.add("Netlist_parsing_time",tend);
 
@@ -98,24 +99,53 @@ int main(int argc, char* argv[])
  
         doc.add("Netlist_file",ckt_netlist_filename.c_str());
 
-        int total_devices = num_voltage_sources + num_current_sources + num_resistors + num_capacitors + num_inductors;
         doc.add("Circuit_attributes","");
         doc.get("Circuit_attributes")->add("Number_of_devices",total_devices);
-        if (num_resistors > 0)
+        if (device_count.find("R") != device_count.end())
+        {
+          int num_resistors = device_count["R"];
           doc.get("Circuit_attributes")->add("Resistors_(R)",num_resistors);
-        if (num_inductors > 0)
+        }
+        if (device_count.find("L") != device_count.end())
+        {
+          int num_inductors = device_count["L"];
           doc.get("Circuit_attributes")->add("Inductors_(L)",num_inductors);
-        if (num_capacitors > 0)
+        }
+        if (device_count.find("C") != device_count.end())
+        {
+          int num_capacitors = device_count["C"];
           doc.get("Circuit_attributes")->add("Capacitors_(C)",num_capacitors);
-        if (num_voltage_sources > 0)
+        }
+        if (device_count.find("V") != device_count.end())
+        {
+          int num_voltage_sources = device_count["V"];
           doc.get("Circuit_attributes")->add("Voltage_sources_(V)",num_voltage_sources);
-        if (num_current_sources > 0)
+        }
+        if (device_count.find("I") != device_count.end())
+        {
+          int num_current_sources = device_count["I"];
           doc.get("Circuit_attributes")->add("Current_sources_(I)",num_current_sources);
+        }
 
         int num_my_rows = dae->A->end_row - dae->A->start_row + 1;
         int num_my_nnz = dae->A->local_nnz, sum_nnz = dae->A->local_nnz;
         int min_nnz = num_my_nnz, max_nnz = num_my_nnz;
         int min_rows = num_my_rows, max_rows = num_my_rows, sum_rows = num_my_rows;
+
+        for (int proc = 0; proc < p; proc++)
+        {
+          if (pid == proc)
+          {
+            int num_my_sends = dae->A->send_instructions.size();
+            std::cout << "Processor : " << pid << " has " << num_my_sends << " sends: ";
+            std::list<data_transfer_instruction*>::iterator it1;
+            for (it1 = dae->A->send_instructions.begin(); it1 != dae->A->send_instructions.end(); it1++)
+            {
+              std::cout << " ( " << (*it1)->pid << " ) " << (*it1)->indices.size() << " ";
+            }
+            std::cout << std::endl;
+          }
+        }
 
 #ifdef HAVE_MPI
         MPI_Allreduce(&num_my_nnz,&sum_nnz,1,MPI_INT,MPI_SUM,MPI_COMM_WORLD);
@@ -247,7 +277,7 @@ int main(int argc, char* argv[])
 			int col_idx = curr->column;
 			double value = (curr->value)/t_step;
 			
-			distributed_sparse_matrix_add_to(A,row_idx,col_idx,value,n,p);
+			distributed_sparse_matrix_add_to(A,row_idx,col_idx,value,total_unknowns,p);
 
 			curr = curr->next_in_row;
 		}

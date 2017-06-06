@@ -30,11 +30,13 @@
 // Mentor : Heidi K Thornquist
 // Date : July 2010
 
+#include <fstream>
 #include <sstream>
+#include <algorithm>
+#include <vector>
 #include "mX_source.h"
 #include "mX_linear_DAE.h"
 #include "mX_sparse_matrix.h"
-#include <fstream>
 #include "mX_parser.h"
 
 #ifdef HAVE_MPI
@@ -45,21 +47,124 @@ using namespace mX_source_utils;
 using namespace mX_matrix_utils;
 using namespace mX_linear_DAE_utils;
 	
-mX_linear_DAE* mX_parse_utils::parse_netlist(std::string filename, int p, int pid, int &n, int &num_internal_nodes, int &num_voltage_sources, int &num_current_sources, int &num_resistors, int &num_capacitors, int &num_inductors)
+mX_linear_DAE* mX_parse_utils::parse_netlist(std::string filename, int p, int pid, int &total_devices, int &total_unknowns, int &num_internal_nodes, std::map<std::string, int>& device_count)
 {
 	// here's the netlist parser I was boasting about
 
 	// given a linear netlist description stored in a file
-		// this function will construct a DAE out of it
-		// and return that part of the DAE to be stored with processor pid
+        // this function will construct a DAE out of it
+	// and return that part of the DAE to be stored with processor pid
 
 	// I assume that all processors will be parsing the netlist simultaneously
-		// and each processor will only take the entries that are rightfully his own
-			// thou shall not covet your fellow processor's distributed matrix entries
+	// and each processor will only take the entries that are rightfully his own
+	// thou shall not covet your fellow processor's distributed matrix entries
 
 	std::ifstream infile;
 	infile.open(filename.data());
 	
+        // Variables for the device count
+        int num_voltage_sources = 0;
+        int num_current_sources = 0;
+        int num_resistors = 0;
+        int num_capacitors = 0;
+        int num_inductors = 0;
+
+        // Make first pass over the netlist and count the number of devices
+        // and collect the integer node names.
+        std::vector<int> node_list;
+
+        // Make first pass and perform device count
+	while (!infile.eof())
+	{
+          std::string curr_line;
+          getline(infile,curr_line);
+		
+          if ((curr_line.length() == 0) || (curr_line[0] == '%'))
+          {
+            continue;	// comments begin with %
+          }
+
+          std::istringstream input_str(curr_line);
+          std::string first_word;
+          input_str >> first_word;
+
+          switch(first_word[0])
+          {
+            case 'r':
+            case 'R':
+            {
+              // seen a resistor
+              num_resistors++;
+            }
+            break;
+
+            case 'c':
+            case 'C':
+            {
+              // seen a capacitor
+              num_capacitors++;
+            }
+            break;
+           
+            case 'l':
+            case 'L':
+            {
+              // seen an inductor
+              num_inductors++;
+            }
+            break;
+
+            case 'v':
+            case 'V':
+            {
+              // seen a voltage source
+              num_voltage_sources++;
+            } 
+            break;
+
+            case 'i':
+            case 'I':
+            {
+              // seen a current source
+              num_current_sources++;
+            }
+            break;
+       	  }
+
+          // Save the node names, which are numbers
+          int node1, node2;
+          input_str >> node1;
+          input_str >> node2;
+          node_list.push_back( node1 );
+          node_list.push_back( node2 );
+        }
+
+        // Sort the node list and count how many nonzero nodes there are.
+        std::sort( node_list.begin(), node_list.end() );
+        node_list.erase( std::unique( node_list.begin(), node_list.end() ), node_list.end() );
+        num_internal_nodes = node_list.size();
+        if (node_list[0] == 0)
+          num_internal_nodes--;  // Get rid of ground node, which is '0', from the node count.
+
+        total_unknowns = num_internal_nodes + num_voltage_sources + num_inductors;
+        total_devices = num_voltage_sources + num_current_sources + num_resistors + num_capacitors + num_inductors;
+
+        if (num_voltage_sources)
+          device_count["V"] = num_voltage_sources;
+        if (num_current_sources)
+          device_count["I"] = num_current_sources;
+        if (num_resistors)
+          device_count["R"] = num_resistors;
+        if (num_capacitors)
+          device_count["C"] = num_capacitors;
+        if (num_inductors)
+          device_count["L"] = num_inductors;
+
+        // Closing and reopening the file, should be able to rewind the file, but it didn't work
+	infile.close();
+	infile.open(filename.data());
+        //infile.seekg( 0, infile.beg );
+
         // Variables for the device count
 	int voltage_src_number = 0;
 	int current_src_number = 0;
@@ -67,37 +172,8 @@ mX_linear_DAE* mX_parse_utils::parse_netlist(std::string filename, int p, int pi
         int resistor_number = 0;
         int capacitor_number = 0;
 
-	// first read the meta information after skipping any comment lines
-		// i.e, how many nodes, how many voltage sources, how many inductors
-
-	bool got_meta_info = false;
-
-	while (!got_meta_info && !infile.eof())
-	{
-		std::string curr_line;
-		getline(infile,curr_line);
-		
-		if ((curr_line.length() == 0) || (curr_line[0] == '%'))
-		{
-			continue;	// comments begin with %
-		}
-
-		std::istringstream input_str(curr_line);
-		
-		input_str >> num_internal_nodes;
-		input_str >> num_voltage_sources;
-		input_str >> num_inductors;
-
-		n = num_internal_nodes + num_voltage_sources + num_inductors;
-
-		got_meta_info = true;
-	}
-
-	// now the meta information has been obtained
-		// so each processor can decide which rows are rightfully its own
-
-	int start_row = (n/p)*(pid) + ((pid < n%p) ? pid : n%p);
-	int end_row = start_row + (n/p) - 1 + ((pid < n%p) ? 1 : 0);
+	int start_row = (total_unknowns/p)*(pid) + ((pid < total_unknowns%p) ? pid : total_unknowns%p);
+	int end_row = start_row + (total_unknowns/p) - 1 + ((pid < total_unknowns%p) ? 1 : 0);
 
 	mX_linear_DAE* dae = new mX_linear_DAE();
 	dae->A = new distributed_sparse_matrix();
@@ -156,10 +232,10 @@ mX_linear_DAE* mX_parse_utils::parse_netlist(std::string filename, int p, int pi
 				input_str >> node2;
 				input_str >> rvalue;
 				
-				distributed_sparse_matrix_add_to(A,node1-1,node1-1,(double)(1)/rvalue,n,p);
-				distributed_sparse_matrix_add_to(A,node2-1,node2-1,(double)(1)/rvalue,n,p);
-				distributed_sparse_matrix_add_to(A,node1-1,node2-1,(double)(-1)/rvalue,n,p);
-				distributed_sparse_matrix_add_to(A,node2-1,node1-1,(double)(-1)/rvalue,n,p);
+				distributed_sparse_matrix_add_to(A,node1-1,node1-1,(double)(1)/rvalue,total_unknowns,p);
+				distributed_sparse_matrix_add_to(A,node2-1,node2-1,(double)(1)/rvalue,total_unknowns,p);
+				distributed_sparse_matrix_add_to(A,node1-1,node2-1,(double)(-1)/rvalue,total_unknowns,p);
+				distributed_sparse_matrix_add_to(A,node2-1,node1-1,(double)(-1)/rvalue,total_unknowns,p);
 			}
 
 			break;
@@ -178,10 +254,10 @@ mX_linear_DAE* mX_parse_utils::parse_netlist(std::string filename, int p, int pi
 				input_str >> node2;
 				input_str >> cvalue;
 				
-				distributed_sparse_matrix_add_to(B,node1-1,node1-1,cvalue,n,p);
-				distributed_sparse_matrix_add_to(B,node2-1,node2-1,cvalue,n,p);
-				distributed_sparse_matrix_add_to(B,node1-1,node2-1,-cvalue,n,p);
-				distributed_sparse_matrix_add_to(B,node2-1,node1-1,-cvalue,n,p);
+				distributed_sparse_matrix_add_to(B,node1-1,node1-1,cvalue,total_unknowns,p);
+				distributed_sparse_matrix_add_to(B,node2-1,node2-1,cvalue,total_unknowns,p);
+				distributed_sparse_matrix_add_to(B,node1-1,node2-1,-cvalue,total_unknowns,p);
+				distributed_sparse_matrix_add_to(B,node2-1,node1-1,-cvalue,total_unknowns,p);
 			}
 
 			break;
@@ -203,11 +279,11 @@ mX_linear_DAE* mX_parse_utils::parse_netlist(std::string filename, int p, int pi
 				input_str >> node2;
 				input_str >> lvalue;
 				
-				distributed_sparse_matrix_add_to(A,k-1,node1-1,(double)(1),n,p);
-				distributed_sparse_matrix_add_to(A,k-1,node2-1,(double)(-1),n,p);
-				distributed_sparse_matrix_add_to(B,k-1,k-1,-lvalue,n,p);
-				distributed_sparse_matrix_add_to(A,node1-1,k-1,(double)(1),n,p);
-				distributed_sparse_matrix_add_to(A,node2-1,k-1,(double)(-1),n,p);
+				distributed_sparse_matrix_add_to(A,k-1,node1-1,(double)(1),total_unknowns,p);
+				distributed_sparse_matrix_add_to(A,k-1,node2-1,(double)(-1),total_unknowns,p);
+				distributed_sparse_matrix_add_to(B,k-1,k-1,-lvalue,total_unknowns,p);
+				distributed_sparse_matrix_add_to(A,node1-1,k-1,(double)(1),total_unknowns,p);
+				distributed_sparse_matrix_add_to(A,node2-1,k-1,(double)(-1),total_unknowns,p);
 			}
 
 			break;
@@ -227,10 +303,10 @@ mX_linear_DAE* mX_parse_utils::parse_netlist(std::string filename, int p, int pi
 				input_str >> node1;
 				input_str >> node2;
 				
-				distributed_sparse_matrix_add_to(A,k-1,node1-1,(double)(1),n,p);
-				distributed_sparse_matrix_add_to(A,k-1,node2-1,(double)(-1),n,p);
-				distributed_sparse_matrix_add_to(A,node1-1,k-1,(double)(-1),n,p);
-				distributed_sparse_matrix_add_to(A,node2-1,k-1,(double)(1),n,p);
+				distributed_sparse_matrix_add_to(A,k-1,node1-1,(double)(1),total_unknowns,p);
+				distributed_sparse_matrix_add_to(A,k-1,node2-1,(double)(-1),total_unknowns,p);
+				distributed_sparse_matrix_add_to(A,node1-1,k-1,(double)(-1),total_unknowns,p);
+				distributed_sparse_matrix_add_to(A,node2-1,k-1,(double)(1),total_unknowns,p);
 				
 				if ((k-1 >= start_row) && (k-1 <= end_row))
 				{
@@ -325,10 +401,6 @@ mX_linear_DAE* mX_parse_utils::parse_netlist(std::string filename, int p, int pi
 		// and each processor hopefully has his correct share of the DAE
 
 	infile.close();
-
-        num_resistors = resistor_number;
-        num_capacitors = capacitor_number;
-        num_current_sources = current_src_number;
 
 	return dae;
 }

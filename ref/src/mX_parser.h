@@ -34,6 +34,7 @@
 // Date : July 2010
 
 #include <string>
+#include <map>
 #include "mX_source.h"
 #include "mX_linear_DAE.h"
 #include "mX_sparse_matrix.h"
@@ -44,6 +45,6 @@ using namespace mX_linear_DAE_utils;
 
 namespace mX_parse_utils
 {
-	mX_linear_DAE* parse_netlist(std::string filename, int p, int pid, int &n, int &num_internal_nodes, int &num_voltage_sources, int &num_current_sources, int &num_resistors, int &num_capacitors, int &num_inductors);
+	mX_linear_DAE* parse_netlist(std::string filename, int p, int pid, int &total_devices, int &total_unknowns, int &num_internal_nodes, std::map<std::string, int>& device_count);
 }
 #endif
