@@ -39,56 +39,60 @@
 
 namespace mX_matrix_utils
 {
-	struct distributed_sparse_matrix_entry
-	{
-		int column;		// global column index
-		double value;	// value stored in the matrix
-		distributed_sparse_matrix_entry* next_in_row;	// pointer to next entry in the same row
-	};
+  struct distributed_sparse_matrix_entry
+  {
+    int column;    // global column index
+    double value;  // value stored in the matrix
+    distributed_sparse_matrix_entry* next_in_row;  // pointer to next entry in the same row
+  };
 
-	struct data_transfer_instruction
-	{
-		std::list<int> indices;		// which elements of the vector to send
-		int pid;		// to which processor the data is to be sent
-	};
+  struct data_transfer_instruction
+  {
+    std::list<int> indices;    // which elements of the vector to send
+    int pid;    // to which processor the data is to be sent
+  };
 
-	struct distributed_sparse_matrix
-	{
-		// the data structure for a distributed sparse matrix is a 1-d threaded list
-			// a set of pointers called row_headers point to the first entry of each row
-			// each row entry in turn points to the next entry in the same row
+  struct distributed_sparse_matrix
+  {
+    // the data structure for a distributed sparse matrix is a 1-d threaded list
+      // a set of pointers called row_headers point to the first entry of each row
+      // each row entry in turn points to the next entry in the same row
 
-		// but a distributed matrix needs more data than this
-			// there is a list of data transfer instructions
-				// these instructions are to be followed whenever a mat-vec product is needed
-		
-		// each processor also stores 2 entries start_row and end_row
-			// it is assumed that all processors store contiguous rows of the distributed matrix
+    // but a distributed matrix needs more data than this
+      // there is a list of data transfer instructions
+        // these instructions are to be followed whenever a mat-vec product is needed
+    
+    // each processor also stores 2 entries start_row and end_row
+      // it is assumed that all processors store contiguous rows of the distributed matrix
 
-		int start_row;
-		int end_row;
-                int local_nnz;
+    int start_row;
+    int end_row;
+    int local_nnz;
+    int n;
 
-		std::vector<distributed_sparse_matrix_entry*> row_headers;
-		std::list<data_transfer_instruction*> send_instructions;
+    int p;      // total number of parallel processors
+    int my_pid; // this processors id
+
+    std::vector<distributed_sparse_matrix_entry*> row_headers;
+    std::list<data_transfer_instruction*> send_instructions;
 
                 distributed_sparse_matrix();
-	};
+  };
 
 
-	void distributed_sparse_matrix_add_to(distributed_sparse_matrix* M, int row_idx, int col_idx, double val, int n, int p);
+  void distributed_sparse_matrix_add_to(distributed_sparse_matrix* M, int row_idx, int col_idx, double val);
 
-	void sparse_matrix_vector_product(distributed_sparse_matrix* A, std::vector<double> &x, std::vector<double> &y);
+  void sparse_matrix_vector_product(distributed_sparse_matrix* A, std::vector<double> &x, std::vector<double> &y);
 
-	double norm(std::vector<double> &x);
+  double norm(std::vector<double> &x);
 
-	void gmres(distributed_sparse_matrix* A, std::vector<double> &b, std::vector<double> &x0, double &tol, double &err, int k, std::vector<double> &x, int &iters, int &restarts);
+  void gmres(distributed_sparse_matrix* A, std::vector<double> &b, std::vector<double> &x0, double &tol, double &err, int k, std::vector<double> &x, int &iters, int &restarts);
 
-        void destroy_matrix(distributed_sparse_matrix* A);
+  void destroy_matrix(distributed_sparse_matrix* A);
 
-        void print_vector(std::vector<double> &x);
+  void print_vector(std::vector<double> &x);
 
-        void print_matrix(distributed_sparse_matrix &A);
+  void print_matrix(distributed_sparse_matrix &A);
 }
 
 #endif

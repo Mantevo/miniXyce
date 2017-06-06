@@ -277,7 +277,7 @@ int main(int argc, char* argv[])
       int col_idx = curr->column;
       double value = (curr->value)/t_step;
       
-      distributed_sparse_matrix_add_to(A,row_idx,col_idx,value,total_unknowns,p);
+      distributed_sparse_matrix_add_to(A,row_idx,col_idx,value);
 
       curr = curr->next_in_row;
     }

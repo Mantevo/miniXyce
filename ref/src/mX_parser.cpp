@@ -180,11 +180,17 @@ mX_linear_DAE* mX_parse_utils::parse_netlist(std::string filename, int p, int pi
   distributed_sparse_matrix* B = dae->B;
 
   // initialise the A, B and b parts that need to be stored in this processor
-
   A->start_row = start_row;
   A->end_row = end_row;
+  A->n = total_unknowns;
+  A->p = p;
+  A->my_pid = pid;
+
   B->start_row = start_row;
   B->end_row = end_row;
+  B->n = total_unknowns; 
+  B->p = p;
+  B->my_pid = pid;
 
   for (int i = start_row; i <= end_row; i++)
   {
@@ -226,10 +232,10 @@ mX_linear_DAE* mX_parse_utils::parse_netlist(std::string filename, int p, int pi
         double rvalue;
         input_str >> rvalue;
         
-        distributed_sparse_matrix_add_to(A,node1-1,node1-1,(double)(1)/rvalue,total_unknowns,p);
-        distributed_sparse_matrix_add_to(A,node2-1,node2-1,(double)(1)/rvalue,total_unknowns,p);
-        distributed_sparse_matrix_add_to(A,node1-1,node2-1,(double)(-1)/rvalue,total_unknowns,p);
-        distributed_sparse_matrix_add_to(A,node2-1,node1-1,(double)(-1)/rvalue,total_unknowns,p);
+        distributed_sparse_matrix_add_to(A,node1-1,node1-1,(double)(1)/rvalue);
+        distributed_sparse_matrix_add_to(A,node2-1,node2-1,(double)(1)/rvalue);
+        distributed_sparse_matrix_add_to(A,node1-1,node2-1,(double)(-1)/rvalue);
+        distributed_sparse_matrix_add_to(A,node2-1,node1-1,(double)(-1)/rvalue);
       }
 
       break;
@@ -241,10 +247,10 @@ mX_linear_DAE* mX_parse_utils::parse_netlist(std::string filename, int p, int pi
         double cvalue;
         input_str >> cvalue;
         
-        distributed_sparse_matrix_add_to(B,node1-1,node1-1,cvalue,total_unknowns,p);
-        distributed_sparse_matrix_add_to(B,node2-1,node2-1,cvalue,total_unknowns,p);
-        distributed_sparse_matrix_add_to(B,node1-1,node2-1,-cvalue,total_unknowns,p);
-        distributed_sparse_matrix_add_to(B,node2-1,node1-1,-cvalue,total_unknowns,p);
+        distributed_sparse_matrix_add_to(B,node1-1,node1-1,cvalue);
+        distributed_sparse_matrix_add_to(B,node2-1,node2-1,cvalue);
+        distributed_sparse_matrix_add_to(B,node1-1,node2-1,-cvalue);
+        distributed_sparse_matrix_add_to(B,node2-1,node1-1,-cvalue);
       }
 
       break;
@@ -262,11 +268,11 @@ mX_linear_DAE* mX_parse_utils::parse_netlist(std::string filename, int p, int pi
         double lvalue;
         input_str >> lvalue;
         
-        distributed_sparse_matrix_add_to(A,k-1,node1-1,(double)(1),total_unknowns,p);
-        distributed_sparse_matrix_add_to(A,k-1,node2-1,(double)(-1),total_unknowns,p);
-        distributed_sparse_matrix_add_to(B,k-1,k-1,-lvalue,total_unknowns,p);
-        distributed_sparse_matrix_add_to(A,node1-1,k-1,(double)(1),total_unknowns,p);
-        distributed_sparse_matrix_add_to(A,node2-1,k-1,(double)(-1),total_unknowns,p);
+        distributed_sparse_matrix_add_to(A,k-1,node1-1,(double)(1));
+        distributed_sparse_matrix_add_to(A,k-1,node2-1,(double)(-1));
+        distributed_sparse_matrix_add_to(B,k-1,k-1,-lvalue);
+        distributed_sparse_matrix_add_to(A,node1-1,k-1,(double)(1));
+        distributed_sparse_matrix_add_to(A,node2-1,k-1,(double)(-1));
       }
 
       break;
@@ -281,10 +287,10 @@ mX_linear_DAE* mX_parse_utils::parse_netlist(std::string filename, int p, int pi
         
         int k = num_internal_nodes + voltage_src_number;
 
-        distributed_sparse_matrix_add_to(A,k-1,node1-1,(double)(1),total_unknowns,p);
-        distributed_sparse_matrix_add_to(A,k-1,node2-1,(double)(-1),total_unknowns,p);
-        distributed_sparse_matrix_add_to(A,node1-1,k-1,(double)(-1),total_unknowns,p);
-        distributed_sparse_matrix_add_to(A,node2-1,k-1,(double)(1),total_unknowns,p);
+        distributed_sparse_matrix_add_to(A,k-1,node1-1,(double)(1));
+        distributed_sparse_matrix_add_to(A,k-1,node2-1,(double)(-1));
+        distributed_sparse_matrix_add_to(A,node1-1,k-1,(double)(-1));
+        distributed_sparse_matrix_add_to(A,node2-1,k-1,(double)(1));
         
         if ((k-1 >= start_row) && (k-1 <= end_row))
         {
@@ -369,7 +375,6 @@ mX_linear_DAE* mX_parse_utils::parse_netlist(std::string filename, int p, int pi
 
   // whew! all the lines have been read
     // and each processor hopefully has his correct share of the DAE
-
   infile.close();
 
   return dae;

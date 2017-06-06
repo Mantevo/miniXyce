@@ -39,13 +39,13 @@
 
 namespace mX_parms_utils
 {
-	enum parm_names{CKT_FILENAME,T_START,T_STEP,T_STOP,TOL,K,INIT_COND,PARMS_FILE,PREV};
+  enum parm_names{CKT_FILENAME,T_START,T_STEP,T_STOP,TOL,K,INIT_COND,PARMS_FILE,PREV};
 
-	void parse_command_line(int argc, std::vector<std::string> &argv, std::string &ckt_filename, double &t_start, double &t_step, double &t_stop, double &tol, int &k, std::vector<double> &init_cond, std::string &parms_file, std::set<int> &specified_parms, int p, int pid);
+  void parse_command_line(int argc, std::vector<std::string> &argv, std::string &ckt_filename, double &t_start, double &t_step, double &t_stop, double &tol, int &k, std::vector<double> &init_cond, std::string &parms_file, std::set<int> &specified_parms, int p, int pid);
 
-	std::vector<std::string> get_command_line_equivalent_from_file(std::string &filename);
+  std::vector<std::string> get_command_line_equivalent_from_file(std::string &filename);
 
-	void get_parms(int argc, char* argv[], std::string &ckt_filename, double &t_start, double &t_step, double &t_stop, double &tol, int &k, std::vector<double> &init_cond, bool &init_cond_specified, int p, int pid);
+  void get_parms(int argc, char* argv[], std::string &ckt_filename, double &t_start, double &t_step, double &t_stop, double &tol, int &k, std::vector<double> &init_cond, bool &init_cond_specified, int p, int pid);
 }
 
 #endif
