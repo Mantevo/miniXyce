@@ -1,5 +1,5 @@
-% simple circuit 1
-% purely resistive
+* simple circuit 1
+* purely resistive
 
 R1 1 2 1
 R2 2 0 5

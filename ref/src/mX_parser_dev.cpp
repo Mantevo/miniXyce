@@ -79,9 +79,9 @@ mX_linear_DAE* mX_parse_utils::parse_netlist(std::string filename, int p, int pi
     std::string curr_line;
     getline(infile,curr_line);
    
-    if ((curr_line.length() == 0) || (curr_line[0] == '*') || (curr_line[0] == '.'))
+    if ((curr_line.length() == 0) || (curr_line[0] == '%'))
     {
-      continue;  // comments begin with *, ignore '.' lines 
+      continue;  // comments begin with %
     }
 
     std::istringstream input_str(curr_line);
@@ -172,17 +172,6 @@ mX_linear_DAE* mX_parse_utils::parse_netlist(std::string filename, int p, int pi
   int start_row = (total_unknowns/p)*(pid) + ((pid < total_unknowns%p) ? pid : total_unknowns%p);
   int end_row = start_row + (total_unknowns/p) - 1 + ((pid < total_unknowns%p) ? 1 : 0);
 
-  int num_my_devices = total_devices/p;
-  if ( pid < total_devices%p )
-    num_my_devices++;
-
-  std::vector<int> local_dev_count( p, 0 ), global_dev_count( p, 0 );
-  local_dev_count[ pid ] = num_my_devices;
-  
-#ifdef HAVE_MPI
-  MPI_Allreduce(&local_dev_count[0],&global_dev_count[0],p,MPI_INT,MPI_SUM,MPI_COMM_WORLD);
-#endif
-
   mX_linear_DAE* dae = new mX_linear_DAE();
   dae->A = new distributed_sparse_matrix();
   dae->B = new distributed_sparse_matrix();
@@ -213,22 +202,17 @@ mX_linear_DAE* mX_parse_utils::parse_netlist(std::string filename, int p, int pi
     (dae->b).push_back(null_ptr_2);
   }
 
-  // In parallel, processor 0 communicates devices to all other processors
-  // before taking its share.
-  int current_pid = 0;
-  if (p > 1)
-    current_pid = 1;   
-
   // initialisation done
   // now read each line from the input file and do what is expected
+
   while (!infile.eof())
   {
     std::string curr_line;
     getline(infile,curr_line);
 
-    if ((curr_line.length() == 0) || (curr_line[0] == '*') || (curr_line[0] == '.'))
+    if ((curr_line.length() == 0) || (curr_line[0] == '%'))
     {
-      continue;  // comments begin with * 
+      continue;  // comments begin with %
     }
 
     std::istringstream input_str(curr_line);
@@ -238,19 +222,6 @@ mX_linear_DAE* mX_parse_utils::parse_netlist(std::string filename, int p, int pi
     int node1, node2;
     input_str >> node1;
     input_str >> node2;
-
-/*
-    if (pid == current_pid)
-    {
-      std::cout << "Processor " << current_pid << " would get device " << first_word << " with nodes " << node1 << " and " << node2 << std::endl;
-    }
-    global_dev_count[ current_pid ]--;
-    if ( !global_dev_count[ current_pid ] )
-      current_pid++;
-    // If this is the last processor, change current_pid to processor 0
-    if (current_pid == p)
-      current_pid = 0;
-*/
 
     switch(first_word[0])
     {

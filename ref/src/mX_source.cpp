@@ -184,7 +184,7 @@ mX_source* mX_source_utils::parse_source(std::istringstream& input_str)
 		return new DC(val);
 	}
 
-	if (src_type == "SINE")
+	if (src_type == "SIN")
 	{
 		double offset,amp,f,ph;
 		input_str >> offset >> amp >> f >> ph;

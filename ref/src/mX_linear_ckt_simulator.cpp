@@ -132,6 +132,7 @@ int main(int argc, char* argv[])
   int min_nnz = num_my_nnz, max_nnz = num_my_nnz;
   int min_rows = num_my_rows, max_rows = num_my_rows, sum_rows = num_my_rows;
 
+  /*
   for (int proc = 0; proc < p; proc++)
   {
     if (pid == proc)
@@ -146,6 +147,7 @@ int main(int argc, char* argv[])
       std::cout << std::endl;
     }
   }
+  */
 
 #ifdef HAVE_MPI
   MPI_Allreduce(&num_my_nnz,&sum_nnz,1,MPI_INT,MPI_SUM,MPI_COMM_WORLD);
@@ -276,7 +278,6 @@ int main(int argc, char* argv[])
     {
       int col_idx = curr->column;
       double value = (curr->value)/t_step;
-      
       distributed_sparse_matrix_add_to(A,row_idx,col_idx,value);
 
       curr = curr->next_in_row;

@@ -1,5 +1,5 @@
-% simple circuit 2 
-% 2 branch RC-Ladder
+* simple circuit 2 
+* 2 branch RC-Ladder
 
 V1 1 0 DC 5
 R1 1 2 1

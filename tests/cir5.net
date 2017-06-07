@@ -1,12 +1,12 @@
-% simple circuit 5
-% includes all the components {R,L,C,V,I}
+* simple circuit 5
+* includes all the components {R,L,C,V,I}
 
 R1 1 2 1
 R2 2 0 2
 L1 2 3 1e-6
 C1 3 0 1e-6
 
-V1 1 0 SINE 0 5 1e6 0
+V1 1 0 SIN 0 5 1e6 0
 I1 2 0 PULSE 0 2 1e-6 0 1e-6 0 1e-6
 
 

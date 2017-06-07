@@ -1,9 +1,9 @@
-% simple circuit 4
-% parallel RLC circuit
+* simple circuit 4
+* parallel RLC circuit
 
 R1 1 0 1
 L1 1 0 1e-6
 C1 1 0 1e-6
 
-I1 1 0 SINE 0 1e-3 1e6 0
+I1 1 0 SIN 0 1e-3 1e6 0
 
