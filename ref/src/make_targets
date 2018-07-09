@@ -4,6 +4,7 @@ OBJS = \
 	mX_linear_DAE.o \
 	mX_parms.o \
 	mX_sparse_matrix.o \
+	mX_vector.o \
 	mX_parser.o \
 	YAML_Doc.o \
 	YAML_Element.o

@@ -37,6 +37,21 @@
 #include <list>
 #include <map>
 
+namespace mX_linear_DAE_utils
+{
+  struct mX_linear_DAE_RHS_entry;
+}
+
+namespace mX_comm_utils
+{
+  struct data_transfer_instruction;
+}
+
+namespace mX_vector_utils
+{
+  struct distributed_vector;
+}
+ 
 namespace mX_matrix_utils
 {
   struct distributed_sparse_matrix_entry
@@ -44,12 +59,10 @@ namespace mX_matrix_utils
     int column;    // global column index
     double value;  // value stored in the matrix
     distributed_sparse_matrix_entry* next_in_row;  // pointer to next entry in the same row
-  };
 
-  struct data_transfer_instruction
-  {
-    std::list<int> indices;    // which elements of the vector to send
-    int pid;    // to which processor the data is to be sent
+    distributed_sparse_matrix_entry(int col_in, double val_in, distributed_sparse_matrix_entry* nir_in)
+      : column( col_in ), value( val_in ), next_in_row( nir_in )
+    {}
   };
 
   struct distributed_sparse_matrix
@@ -68,29 +81,34 @@ namespace mX_matrix_utils
     int start_row;
     int end_row;
     int local_nnz;
-    int n;
+    std::vector<int> local_rows;
+    std::vector<int> overlap_rows, overlap_recv, overlap_send;
 
+    int n;
     int p;      // total number of parallel processors
     int my_pid; // this processors id
 
     std::vector<distributed_sparse_matrix_entry*> row_headers;
-    std::list<data_transfer_instruction*> send_instructions;
+    std::list<mX_comm_utils::data_transfer_instruction*> send_instructions;
+    std::list<mX_comm_utils::data_transfer_instruction*> recv_instructions;
 
-                distributed_sparse_matrix();
+    distributed_sparse_matrix();
   };
 
+  void distributed_sparse_matrix_insert(distributed_sparse_matrix* M, int row_idx, int col_idx, double val, int proc);
+
+  void distributed_sparse_matrix_finish(distributed_sparse_matrix* A, distributed_sparse_matrix* B,
+                                        const std::vector<mX_linear_DAE_utils::mX_linear_DAE_RHS_entry*>& b);
 
   void distributed_sparse_matrix_add_to(distributed_sparse_matrix* M, int row_idx, int col_idx, double val);
 
-  void sparse_matrix_vector_product(distributed_sparse_matrix* A, std::vector<double> &x, std::vector<double> &y);
+  void sparse_matrix_vector_product(distributed_sparse_matrix* A, mX_vector_utils::distributed_vector& x, mX_vector_utils::distributed_vector& y);
 
-  double norm(std::vector<double> &x);
+  void sparse_matrix_vector_product(distributed_sparse_matrix* A, std::vector<double> &x, std::vector<double> &y);
 
   void gmres(distributed_sparse_matrix* A, std::vector<double> &b, std::vector<double> &x0, double &tol, double &err, int k, std::vector<double> &x, int &iters, int &restarts);
 
   void destroy_matrix(distributed_sparse_matrix* A);
-
-  void print_vector(std::vector<double> &x);
 
   void print_matrix(distributed_sparse_matrix &A);
 }

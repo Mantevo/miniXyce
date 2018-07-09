@@ -34,16 +34,268 @@
 #include <mpi.h> // If this routine is compiled with -DHAVE_MPI
                  // then include mpi.h
 #endif
+#include "mX_comm.h"
 #include "mX_sparse_matrix.h"
+#include "mX_vector.h"
+#include "mX_linear_DAE.h"
 #include <map>
 #include <cmath>
 #include <iostream>
+#include <algorithm>
+#include <numeric>
 
+using namespace mX_comm_utils;
 using namespace mX_matrix_utils;
+using namespace mX_vector_utils;
+using namespace mX_linear_DAE_utils;
 
 distributed_sparse_matrix::distributed_sparse_matrix()
   : start_row(0), end_row(0), local_nnz(0)
 {}
+
+void mX_matrix_utils::distributed_sparse_matrix_insert(distributed_sparse_matrix* M, int row_idx, int col_idx, double val, int proc)
+{
+  // Inserts row_idx,col_idx,val into M.
+  if ((row_idx < 0) || (col_idx < 0))
+  {
+    // check for negative indices
+      // useful in cases where you want to ignore the ground
+        // because the ground is not really a node
+
+    return;
+  }
+
+  if (proc == M->my_pid)
+  { 
+    bool inserted = false;
+    bool found = false;
+
+    distributed_sparse_matrix_entry* prev = 0;
+    distributed_sparse_matrix_entry* curr = M->row_headers[row_idx];
+
+    while (curr && !found)
+    {
+      if (curr->column < col_idx)
+      {
+        prev = curr;
+        curr = curr->next_in_row;
+      }
+      else
+      {
+        if (curr->column == col_idx)
+        {
+          curr->value = curr->value + val;
+          found = true;
+        }
+        else
+        {
+          // The entry should go here, but it's not less than or equal to, so the col_idx must be >.
+          break;
+        }
+      }
+    }
+
+    if (!found)
+    {
+      distributed_sparse_matrix_entry* entry_ptr_1 = new distributed_sparse_matrix_entry(col_idx, val, curr);
+
+      if (prev)
+      {
+        prev->next_in_row = entry_ptr_1;
+      }
+      else
+      {
+        M->row_headers[row_idx] = entry_ptr_1;
+      }
+
+      inserted = true;
+    }
+
+    // The number of local nonzeros has gone up only if this is a new entry.
+    if (inserted)
+      M->local_nnz++;
+  }
+} 
+
+
+void mX_matrix_utils::distributed_sparse_matrix_finish(distributed_sparse_matrix* A, distributed_sparse_matrix* B,
+                                                       const std::vector<mX_linear_DAE_RHS_entry*>& b)
+{
+  // MPI_MIN is used to assign processors to shared nodes, so put the 
+  // fill value as the number of processors for nodes not required by this processor.
+  // 
+  // The sends and recvs are set up using the nonzero pattern of both A, B, and b.
+  // This ensures we can form the circuit Jacobian and perform matrix-vector products.
+  //
+  int fill_value = A->p; 
+
+  std::vector<int> local_nnz_rows(A->n,fill_value), global_nnz_rows(A->n,0);
+  std::vector<int> local_nnz_cols;
+
+  for (int i=0; i<A->n; i++)
+  {
+    distributed_sparse_matrix_entry* curr = A->row_headers[i];
+    if (curr)
+      local_nnz_rows[i] = A->my_pid;
+    while (curr)
+    {
+      local_nnz_cols.push_back(curr->column);
+      curr = curr->next_in_row;
+    }
+
+    curr = B->row_headers[i];
+    if (curr)
+      local_nnz_rows[i] = B->my_pid;
+    while (curr)
+    {
+      local_nnz_cols.push_back(curr->column);
+      curr = curr->next_in_row;
+    } 
+
+    mX_linear_DAE_RHS_entry* curr_b = b[i];
+    if (curr_b)
+    {
+      local_nnz_rows[i] = A->my_pid; 
+      local_nnz_cols.push_back(i);
+    }
+  } 
+
+  // Order the columns needed for matrix-vector products.
+  std::sort( local_nnz_cols.begin(), local_nnz_cols.end() );
+  local_nnz_cols.erase( std::unique( local_nnz_cols.begin(), local_nnz_cols.end() ), local_nnz_cols.end() ); 
+ 
+#ifdef HAVE_MPI
+  MPI_Allreduce(&local_nnz_rows[0],&global_nnz_rows[0],A->n,MPI_INT,MPI_MIN,MPI_COMM_WORLD);
+#endif
+
+  for (int i=0; i<A->n; i++)
+  {
+    // Determine who owns the nodes that are shared
+    if (global_nnz_rows[i]==A->my_pid)
+    {
+      A->local_rows.push_back(i);
+      std::cout << "Processor " << A->my_pid << " owns row " << i << std::endl;
+
+      std::vector<int>::iterator it = std::find( local_nnz_cols.begin(), local_nnz_cols.end(), i );
+      if ( it != local_nnz_cols.end() )
+      {
+        local_nnz_cols.erase( it );
+      }
+    } 
+    else if (local_nnz_rows[i]==A->my_pid)
+    {
+      // This processor will need to send the result of it's matrix-vector product to global_nnz_rows[i].
+      // Since there is already a send_instructions for the column, we'll call this a recv_instructions.
+      // For linear circuits, matrices are symmetric, so recv_instructions will be the transpose of send.
+      bool recv_instruction_posted = false;
+      int pid_to_recv_info = global_nnz_rows[i];
+
+      std::list<data_transfer_instruction*>::iterator it1 = A->recv_instructions.begin();
+
+      for (; it1 != A->recv_instructions.end(); it1++)
+      {
+        if ((*it1)->pid == pid_to_recv_info)
+        {
+          std::list<int>::iterator it2 = std::find( (*it1)->indices.begin(), (*it1)->indices.end(), i );
+          if (it2 == (*it1)->indices.end())
+          {
+            (*it1)->indices.push_back(i);
+          }
+          recv_instruction_posted = true;
+        }
+      }
+
+      if (!recv_instruction_posted)
+      {
+        data_transfer_instruction* dti_ptr_1 = new data_transfer_instruction(pid_to_recv_info);
+        dti_ptr_1->indices.push_back(i);
+
+        A->recv_instructions.push_back(dti_ptr_1);
+      }
+    }
+  }
+
+  for (std::vector<int>::iterator it = local_nnz_cols.begin(); it != local_nnz_cols.end(); it++)
+  {
+    std::cout << "Processor " << A->my_pid << " has overlap row " << *it << std::endl;
+  }
+
+  // Set the local and ghost rows with both A and B.
+  A->overlap_rows = local_nnz_cols;
+  B->local_rows = A->local_rows;
+  B->overlap_rows = local_nnz_cols;
+
+  std::vector<int> local_overlap( A->p ), global_overlap( A->p );
+  local_overlap[ A->my_pid ] = local_nnz_cols.size();
+
+#ifdef HAVE_MPI
+  MPI_Allreduce(&local_overlap[0],&global_overlap[0],A->p,MPI_INT,MPI_MAX,MPI_COMM_WORLD);
+#endif
+
+  int total_overlap = std::accumulate( global_overlap.begin(), global_overlap.end(), 0 );
+
+  int ptr = 0;
+  std::vector<int> local_recv_rows( 2*total_overlap ), global_recv_rows( 2*total_overlap );
+  for (int proc = 0; proc < A->p; proc++)
+  {
+    if (proc == A->my_pid)
+    {
+      for (std::vector<int>::const_iterator it = local_nnz_cols.begin(); it != local_nnz_cols.end(); it++)
+      {
+        local_recv_rows[ ptr ] = proc;
+        local_recv_rows[ ptr+1 ] = *it;
+        ptr += 2;
+      }
+      break;
+    }
+    ptr += 2*global_overlap[proc]; 
+  }
+  
+#ifdef HAVE_MPI
+  MPI_Allreduce(&local_recv_rows[0],&global_recv_rows[0],2*total_overlap,MPI_INT,MPI_MAX,MPI_COMM_WORLD);
+#endif
+
+  for (int i=0; i<total_overlap; i++)
+  {
+    int pid_to_send_info = global_recv_rows[2*i];
+    int row = global_recv_rows[2*i+1];
+
+    if (pid_to_send_info != A->my_pid)
+    {
+      bool send_instruction_posted = false;
+      std::vector<int>::const_iterator it = std::find( A->local_rows.begin(), A->local_rows.end(), row );
+      if (it != A->local_rows.end())
+      {
+        std::cout << "Processor " << A->my_pid << " needs to send row " << row << " to processor " << pid_to_send_info << std::endl;
+
+        std::list<data_transfer_instruction*>::iterator it1 = A->send_instructions.begin();
+
+        for (; it1 != A->send_instructions.end(); it1++)
+        {
+          if ((*it1)->pid == pid_to_send_info)
+          {
+            std::list<int>::iterator it2 = std::find( (*it1)->indices.begin(), (*it1)->indices.end(), row );
+            if (it2 == (*it1)->indices.end())
+            {
+              (*it1)->indices.push_back(row);
+            }
+            send_instruction_posted = true;
+            break;
+          }
+        }
+
+        if (!send_instruction_posted)
+        {
+          data_transfer_instruction* dti_ptr_1 = new data_transfer_instruction(pid_to_send_info);
+          dti_ptr_1->indices.push_back(row);
+
+          A->send_instructions.push_back(dti_ptr_1);
+        }
+      }
+    }
+  }
+}
+
 
 void mX_matrix_utils::distributed_sparse_matrix_add_to(distributed_sparse_matrix* M, int row_idx, int col_idx, double val)
 {
@@ -59,181 +311,103 @@ void mX_matrix_utils::distributed_sparse_matrix_add_to(distributed_sparse_matrix
     return;
   }
 
-  if ((row_idx >= M->start_row) && (row_idx <= M->end_row))
-  {
-    // ok, so the processor that's supposed to store M[row_idx][col_idx] is here
-      // navigate through the fellow's threaded list and do the needful
+  bool inserted = false;
+  bool found = false;
 
-    bool inserted = false;
-    bool found = false;
-
-    distributed_sparse_matrix_entry* prev = 0;
-    distributed_sparse_matrix_entry* curr = M->row_headers[row_idx-M->start_row];
+  distributed_sparse_matrix_entry* prev = 0;
+  distributed_sparse_matrix_entry* curr = M->row_headers[row_idx];
   
-    while ((curr) && (!inserted) && (!found))
-    {
-      if (curr->column < col_idx)
-      {
-        prev = curr;
-        curr = curr->next_in_row;
-      }
-
-      else
-      {
-        if (curr->column == col_idx)
-        {
-          curr->value = curr->value + val;
-          found = true;
-        }
-
-        else
-        {
-          distributed_sparse_matrix_entry* entry_ptr_1 = new distributed_sparse_matrix_entry();
-          entry_ptr_1->column = col_idx;
-          entry_ptr_1->value = val;
-          entry_ptr_1->next_in_row = curr;
-
-          if (prev)
-          {
-            prev->next_in_row = entry_ptr_1;
-          }
-
-          else
-          {
-            M->row_headers[row_idx-M->start_row] = entry_ptr_1;
-          }
-
-          inserted = true;
-        }
-      }
-    }
-
-    if (!inserted && !found)
-    {
-      distributed_sparse_matrix_entry* entry_ptr_1 = new distributed_sparse_matrix_entry();
-      entry_ptr_1->column = col_idx;
-      entry_ptr_1->value = val;
-      entry_ptr_1->next_in_row = curr;
-
-      if (prev)
-      {
-        prev->next_in_row = entry_ptr_1;
-      }
-
-      else
-      {
-        M->row_headers[row_idx-M->start_row] = entry_ptr_1;
-      }
-
-      inserted = true;
-    }
-
-    // The number of local nonzeros has gone up only if this is a new entry.
-    if (inserted)
-      M->local_nnz++;
-
-    return;
-  }
-
-  // but wait, if you have inserted a new non-zero in the sparse matrix
-    // it might require some additional book-keeping of communication info
-
-  if ((col_idx >= M->start_row) && (col_idx <= M->end_row))
+  while (curr && !found)
   {
-    // aha, here's the processor who controls the col_idx
-    // this fellow needs to send the value at col_idx to the fellow who controls the row_idx
-    // everytime a matrix vector product is needed
-    // so find out who has the row_idx
-    // and if needed, include an instruction in this fellow's list of send instructions
-
-    int pid_to_send_info;
-    bool pid_found = false;
-
-    int start_pid = 0;
-    int end_pid = M->p-1;
-    int mid_pid = (start_pid + end_pid)/2;
-
-    int mid_start_row = (M->n/M->p)*(mid_pid) + ((mid_pid < M->n%M->p) ? mid_pid : M->n%M->p);
-    int mid_end_row = mid_start_row + (M->n/M->p) - 1 + ((mid_pid < M->n%M->p) ? 1 : 0);
-
-    while (!pid_found)
+    if (curr->column < col_idx)
     {
-      if (row_idx < mid_start_row)
+      prev = curr;
+      curr = curr->next_in_row;
+    }
+    else
+    {
+      if (curr->column == col_idx)
       {
-        end_pid = mid_pid - 1;
-        mid_pid = (start_pid + end_pid)/2;
+        curr->value = curr->value + val;
+        found = true;
       }
-
       else
       {
-        if (row_idx > mid_end_row)
-        {
-          start_pid = mid_pid + 1;
-          mid_pid = (start_pid + end_pid)/2;
-        }
-
-        else
-        {
-          pid_to_send_info = mid_pid;
-          pid_found = true;
-        }
+        // The entry should go here, but it's not less than or equal to, so the col_idx must be >.
+        break;
       }
-
-      mid_start_row = (M->n/M->p)*(mid_pid) + ((mid_pid < M->n%M->p) ? mid_pid : M->n%M->p);
-      mid_end_row = mid_start_row + (M->n/M->p) - 1 + ((mid_pid < M->n%M->p) ? 1 : 0);
-    }
-
-    bool send_instruction_posted = false;
-    
-    std::list<data_transfer_instruction*>::iterator it1;
-
-    for (it1 = M->send_instructions.begin(); it1 != M->send_instructions.end(); it1++)
-    {
-      if ((*it1)->pid == pid_to_send_info)
-      {
-        std::list<int>::iterator it2;
-
-        for (it2 = ((*it1)->indices).begin(); it2 != ((*it1)->indices).end(); it2++)
-        {
-          if (*it2 == col_idx)
-          {
-            send_instruction_posted = true;
-          }
-        }
-
-        if (!send_instruction_posted)
-        {
-          (*it1)->indices.push_back(col_idx);
-          send_instruction_posted = true;
-        }
-      }
-    }
-
-    if (!send_instruction_posted)
-    {
-      data_transfer_instruction* dti_ptr_1 = new data_transfer_instruction();
-      dti_ptr_1->pid = pid_to_send_info;
-      dti_ptr_1->indices.push_back(col_idx);
-
-      M->send_instructions.push_back(dti_ptr_1);
-      send_instruction_posted = true;
     }
   }
 
-  // that was easy!
+  if (!found)
+  {
+    distributed_sparse_matrix_entry* entry_ptr_1 = new distributed_sparse_matrix_entry(col_idx, val, curr);
+
+    if (prev)
+    {
+      prev->next_in_row = entry_ptr_1;
+    }
+    else
+    {
+      M->row_headers[row_idx] = entry_ptr_1;
+    }
+
+    inserted = true;
+  }
+
+  // The number of local nonzeros has gone up only if this is a new entry.
+  if (inserted)
+    M->local_nnz++;
+
+  return;
+}
+
+
+void mX_matrix_utils::sparse_matrix_vector_product(distributed_sparse_matrix* A, distributed_vector &x, distributed_vector &y)
+{
+  // compute the matrix vector product A*x and return it in y
+
+  // Zero out values in y.
+  init_value( y, 0.0 );
+
+  for (int i=0; i<A->n; i++)
+  {
+    distributed_sparse_matrix_entry* curr = A->row_headers[i];
+
+    while (curr)
+    {
+      int x_idx, y_idx;
+
+      int col_idx = curr->column;
+      double x_value = 0.0;
+      std::map<int,int>::iterator it2 = x.row_to_idx.find( col_idx ); 
+      if (it2 != x.row_to_idx.end())
+      {
+        x_value = x.values[it2->second];
+        std::cout << "PID " << A->my_pid << ", col_idx = " << col_idx << ", x_idx = " << it2->second << ", x_values = " << x_value << std::endl;
+      } 
+
+      std::map<int,int>::iterator it3 = y.row_to_idx.find( i );
+      if (it3 != y.row_to_idx.end())
+      {
+        y.values[it3->second] += (curr->value)*x_value;
+        std::cout << "PID " << A->my_pid << ", row_idx = " << i << ", y_idx = " << it3->second  << ", y_values = " << y.values[it3->second] << std::endl;
+      }
+
+      // Update pointer
+      curr = curr->next_in_row;
+    }
+  }
+
+  // Now assemble vector in parallel before returning.
+  mX_vector_utils::assemble_vector( y );
 
 }
+
 
 void mX_matrix_utils::sparse_matrix_vector_product(distributed_sparse_matrix* A, std::vector<double> &x, std::vector<double> &y)
 {
   // compute the matrix vector product A*x and return it in y
-    // assuming x contains only x[start_row] to x[end_row]
-  
-  // at the end of this function, it is guaranteed that
-    // y[0] to y[end_row-start_row] will contain the correct entries of (Ax)[start_row] to (Ax)[end_row] 
-
-        int start_row = A->start_row;
-  int end_row = A->end_row;
 
 #ifdef HAVE_MPI
   // ok, now's the time to follow the send instructions that each pid has been maintaining
@@ -246,7 +420,7 @@ void mX_matrix_utils::sparse_matrix_vector_product(distributed_sparse_matrix* A,
 
     for (it2 = (*it1)->indices.begin(); it2 != (*it1)->indices.end(); it2++)
     {
-      MPI_Send(&x[(*it2)-start_row],1,MPI_DOUBLE,(*it1)->pid,*it2,MPI_COMM_WORLD);
+      MPI_Send(&x[*it2],1,MPI_DOUBLE,(*it1)->pid,*it2,MPI_COMM_WORLD);
     }
   }
 #endif
@@ -257,33 +431,30 @@ void mX_matrix_utils::sparse_matrix_vector_product(distributed_sparse_matrix* A,
   std::map<int,double> x_vec_entries;
   std::map<int,double>::iterator it3;
 
-  for (int i = start_row; i <= end_row; i++)
+  for (int i = 0; i < A->n; i++)
   {
     // compute the mat_vec product for the i'th row
-
-    if (y.size() > i - start_row)
+    if (y.size() > i)
     {
-      y[i-start_row] = (double)(0);
+      y[i] = (double)(0);
     }
-
     else
     {
       y.push_back((double)(0));
     }
 
-    distributed_sparse_matrix_entry* curr = A->row_headers[i-start_row];
+    distributed_sparse_matrix_entry* curr = A->row_headers[i];
 
     while(curr)
     {
       int col_idx = curr->column;
       
-      if ((col_idx >= start_row) && (col_idx <= end_row))
+      if (std::find( A->local_rows.begin(), A->local_rows.end(), col_idx )!= A->local_rows.end())
       {
         // aha, this processor has the correct x_vec entry locally
 
-        y[i-start_row] += (curr->value)*x[col_idx-start_row];
+        y[i] += (curr->value)*x[col_idx];
       }
-
 #ifdef HAVE_MPI
       else
       {
@@ -296,9 +467,8 @@ void mX_matrix_utils::sparse_matrix_vector_product(distributed_sparse_matrix* A,
 
         if (it3 != x_vec_entries.end())
         {
-          y[i-start_row] += (double)(it3->second)*(curr->value);
+          y[i] += (double)(it3->second)*(curr->value);
         }
-
         else
         {
           // no, the entry is not in the map either
@@ -308,11 +478,11 @@ void mX_matrix_utils::sparse_matrix_vector_product(distributed_sparse_matrix* A,
               // continues with the matrix vector multiplication
 
           double x_vec_entry;
-                            MPI_Status status;
+          MPI_Status status;
           MPI_Recv(&x_vec_entry,1,MPI_DOUBLE,MPI_ANY_SOURCE,col_idx,MPI_COMM_WORLD,&status);
 
           x_vec_entries[col_idx] = x_vec_entry;
-          y[i-start_row] += x_vec_entry*(curr->value);
+          y[i] += x_vec_entry*(curr->value);
         }
       }
 #endif
@@ -321,26 +491,10 @@ void mX_matrix_utils::sparse_matrix_vector_product(distributed_sparse_matrix* A,
   }
 }
 
-double mX_matrix_utils::norm(std::vector<double> &x)
-{
-  // at last, a function that's relatively simple to implement in parallel
+void mX_matrix_utils::gmres(distributed_sparse_matrix* A, std::vector<double> &b, std::vector<double> &x0, double &tol, double &err, int k, std::vector<double> &x, int &iters, int &restarts)
+{}
 
-  double global_norm;
-  double local_norm = 0.0;
-
-  for (int i = 0; i < x.size(); i++)
-  {
-    local_norm += x[i]*x[i];
-  }
-#ifdef HAVE_MPI
-  MPI_Allreduce(&local_norm,&global_norm,1,MPI_DOUBLE,MPI_SUM,MPI_COMM_WORLD);
-#else
-  global_norm = local_norm;
-#endif
-
-  return std::sqrt(global_norm);
-}
-
+/*
 void mX_matrix_utils::gmres(distributed_sparse_matrix* A, std::vector<double> &b, std::vector<double> &x0, double &tol, double &err, int k, std::vector<double> &x, int &iters, int &restarts)
 {
   // here's the star of the show, the guest of honor, none other than Mr.GMRES
@@ -348,9 +502,6 @@ void mX_matrix_utils::gmres(distributed_sparse_matrix* A, std::vector<double> &b
   // first Mr.GMRES will compute the error in the initial guess
     // if it's already smaller than tol, he calls it a day
     // otherwise he settles down to work in mysterious ways his wonders to perform
-
-  int start_row = A->start_row;
-  int end_row = A-> end_row;
 
   x = x0;
 
@@ -373,25 +524,22 @@ void mX_matrix_utils::gmres(distributed_sparse_matrix* A, std::vector<double> &b
 
     restarts++;
     
-    std::vector<double> temp1;
     std::vector< std::vector<double> > V;
     sparse_matrix_vector_product(A,x,temp1);
 
-    for (int i = start_row; i <= end_row; i++)
+    for (int i = 0; i <= A->n; i++)
     {
-      temp1[i-start_row] -= b[i-start_row];
-      temp1[i-start_row] *= (double)(-1);
+      temp1[i] -= b[i];
+      temp1[i] *= (double)(-1);
 
-      std::vector<double> temp2;
-      temp2.push_back(temp1[i-start_row]);
-      V.push_back(temp2);
+      V.push_back(temp1);
     }
 
     double beta = norm(temp1);
 
-    for (int i = start_row; i <= end_row; i++)
+    for (int i = 0; i < A->n; i++)
     {
-      V[i-start_row][0] /= beta;
+      V[i][0] /= beta;
     }
 
     err = beta;
@@ -424,9 +572,9 @@ void mX_matrix_utils::gmres(distributed_sparse_matrix* A, std::vector<double> &b
       std::vector<double> temp1;
       std::vector<double> temp2;
 
-      for (int i = start_row; i <= end_row; i++)
+      for (int i = 0; i < A->n; i++)
       {
-        temp1.push_back(V[i-start_row][iters-1]);  
+        temp1.push_back(V[i][iters-1]);  
       }
       sparse_matrix_vector_product(A,temp1,temp2);
 
@@ -441,18 +589,18 @@ void mX_matrix_utils::gmres(distributed_sparse_matrix* A, std::vector<double> &b
         double local_dot = 0.0;
         double global_dot;
 
-        for (int j = start_row; j <= end_row; j++)
+        for (int j = 0; j < A->n; j++)
         {
-          local_dot += temp2[j-start_row]*V[j-start_row][i];
+          local_dot += temp2[j]*V[j][i];
         }
 #ifdef HAVE_MPI
         MPI_Allreduce(&local_dot,&global_dot,1,MPI_DOUBLE,MPI_SUM,MPI_COMM_WORLD);
 #else
                                 global_dot = local_dot;
 #endif        
-        for (int j = start_row; j <= end_row; j++)
+        for (int j = 0; j < A->n; j++)
         {
-          temp2[j-start_row] -= global_dot*V[j-start_row][i];
+          temp2[j] -= global_dot*V[j][i];
         }
 
         new_col_H.push_back(global_dot);
@@ -460,10 +608,10 @@ void mX_matrix_utils::gmres(distributed_sparse_matrix* A, std::vector<double> &b
 
       new_col_H.push_back(norm(temp2));
 
-      for (int i = start_row; i <= end_row; i++)
+      for (int i = 0; i < A->n; i++)
       {
-        temp2[i-start_row] /= new_col_H.back();
-        V[i-start_row].push_back(temp2[i-start_row]);
+        temp2[i]/= new_col_H.back();
+        V[i].push_back(temp2[i]);
       }
 
       // Right, Mr.GMRES has successfully updated V
@@ -525,16 +673,16 @@ void mX_matrix_utils::gmres(distributed_sparse_matrix* A, std::vector<double> &b
 
     // ok, so y is ready (although it's stored upside down)
 
-    for (int i = start_row; i <= end_row; i++)
+    for (int i = 0; i < A->n; i++)
     {
       double sum = (double)(0);
 
       for (int j = iters-1; j >= 0; j--)
       {
-        sum += y[iters-1-j]*V[i-start_row][j];
+        sum += y[iters-1-j]*V[i][j];
       }
 
-      x[i-start_row] += sum;
+      x[i] += sum;
     }
 
     // the new x is also ready
@@ -548,13 +696,14 @@ void mX_matrix_utils::gmres(distributed_sparse_matrix* A, std::vector<double> &b
     restarts = 0;
   }
 }
+*/
 
 void mX_matrix_utils::destroy_matrix(distributed_sparse_matrix* A)
 {
   if (A)
   {
       // delete row_headers
-      for (int j=A->start_row, cnt=0; j<=A->end_row; ++j, ++cnt)
+      for (int j=0, cnt=0; j<A->n; ++j, ++cnt)
       {
         distributed_sparse_matrix_entry* curr = (*A).row_headers[cnt], *next = 0;
         
@@ -579,48 +728,18 @@ void mX_matrix_utils::destroy_matrix(distributed_sparse_matrix* A)
   }
 }
 
-void mX_matrix_utils::print_vector(std::vector<double>& x)
-{
-  int n = 1, my_pid = 0;
-
-#ifdef HAVE_MPI
-  /* Find this processor number */
-  MPI_Comm_rank(MPI_COMM_WORLD, &my_pid);
-
-  /* Find the number of processors */
-  MPI_Comm_size(MPI_COMM_WORLD, &n);
-#endif
-
-  for (int i=0; i<n; ++i) 
-  {
-    if (i == my_pid) 
-    {
-      if (my_pid == 0)
-        std::cout << "Proc\tLocal Index\tValue" << std::endl;
-
-      for (int j=0; j<x.size(); ++j) 
-      {
-        std::cout << my_pid << "\t" << j << "\t" << x[j] << std::endl;
-      }
-    }
-#ifdef HAVE_MPI
-    MPI_Barrier(MPI_COMM_WORLD);
-#endif
-  }
-}
-
 void mX_matrix_utils::print_matrix(distributed_sparse_matrix &A)
 {
-  for (int i=0; i<A.n; ++i)
+  if (A.my_pid == 0)
+    std::cout << "Matrix\nProc\tRow\tColumn\tValue" << std::endl;
+
+  for (int i=0; i<A.p; ++i)
   {
     if (i == A.my_pid)
     {
-      if (A.my_pid == 0)
-        std::cout << "Matrix\nProc\tRow\tColumn\tValue" << std::endl;
-
-      for (int j=A.start_row, cnt=0; j<=A.end_row; ++j, ++cnt)
+      for (int j=0; j<A.n; ++j)
       {
-        distributed_sparse_matrix_entry* curr = A.row_headers[cnt];
+        distributed_sparse_matrix_entry* curr = A.row_headers[j];
 
         while (curr)
         {
@@ -634,4 +753,5 @@ void mX_matrix_utils::print_matrix(distributed_sparse_matrix &A)
 #endif
   }
 }
+
 

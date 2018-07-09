@@ -1,5 +1,5 @@
-#ifndef __MX_LINEAR_DAE_H__
-#define __MX_LINEAR_DAE_H__
+#ifndef __MX_COMM_DEFS_H__
+#define __MX_COMM_DEFS_H__
 
 //@HEADER
 // ************************************************************************
@@ -34,42 +34,18 @@
 // Date : July 2010
 
 #include <list>
-#include <vector>
-#include "mX_source.h"
-#include "mX_sparse_matrix.h"
-#include "mX_vector.h"
 
-using namespace mX_source_utils;
-using namespace mX_matrix_utils;
-using namespace mX_vector_utils;
-
-namespace mX_linear_DAE_utils
+namespace mX_comm_utils
 {
-  struct mX_linear_DAE_RHS_entry
+  struct data_transfer_instruction
   {
-    // a single entry in the RHS of a DAE of the form "A x + B x_dot = b(t)"
-      // each entry in b(t) is a list of scaled sources
-        // linear combination of multiple voltage/current sources
+    std::list<int> indices;    // which elements of the vector to send
+    int pid;    // to which processor the data is to be sent
 
-    std::list<mX_scaled_source*> scaled_src_list;
+    data_transfer_instruction(int pid_in)
+      : pid( pid_in )
+    {}
   };
-
-  struct mX_linear_DAE
-  {
-    // a linear DAE is of the form "A x + B x_dot = b(t)"
-      // A and B are distributed sparse matrices
-      // b(t) is a time-varying function
-        // every entry of which is a linear combination of voltage/current sources
-
-    distributed_sparse_matrix* A;
-    distributed_sparse_matrix* B;
-    std::vector<mX_linear_DAE_RHS_entry*> b;
-  };
-
-  distributed_vector evaluate_b(double t, mX_linear_DAE* dae);
-  std::vector<double> evaluate_b_old(double t, mX_linear_DAE* dae);
-  void destroy(mX_linear_DAE* dae);
-  void destroy_RHS(mX_linear_DAE_RHS_entry* entry);
 }
 
 #endif

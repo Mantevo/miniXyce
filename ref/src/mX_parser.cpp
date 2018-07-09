@@ -32,6 +32,7 @@
 
 #include <fstream>
 #include <sstream>
+#include <iostream>
 #include <algorithm>
 #include <vector>
 #include "mX_source.h"
@@ -169,9 +170,7 @@ mX_linear_DAE* mX_parse_utils::parse_netlist(std::string filename, int p, int pi
   int voltage_src_number = 0;
   int inductor_number = 0; 
 
-  int start_row = (total_unknowns/p)*(pid) + ((pid < total_unknowns%p) ? pid : total_unknowns%p);
-  int end_row = start_row + (total_unknowns/p) - 1 + ((pid < total_unknowns%p) ? 1 : 0);
-
+  // Determine how many devices each processor should get.
   int num_my_devices = total_devices/p;
   if ( pid < total_devices%p )
     num_my_devices++;
@@ -191,19 +190,15 @@ mX_linear_DAE* mX_parse_utils::parse_netlist(std::string filename, int p, int pi
   distributed_sparse_matrix* B = dae->B;
 
   // initialise the A, B and b parts that need to be stored in this processor
-  A->start_row = start_row;
-  A->end_row = end_row;
   A->n = total_unknowns;
   A->p = p;
   A->my_pid = pid;
 
-  B->start_row = start_row;
-  B->end_row = end_row;
   B->n = total_unknowns; 
   B->p = p;
   B->my_pid = pid;
 
-  for (int i = start_row; i <= end_row; i++)
+  for (int i = 0; i < total_unknowns; i++)
   {
     distributed_sparse_matrix_entry* null_ptr_1 = 0;
     A->row_headers.push_back(null_ptr_1);
@@ -239,18 +234,10 @@ mX_linear_DAE* mX_parse_utils::parse_netlist(std::string filename, int p, int pi
     input_str >> node1;
     input_str >> node2;
 
-/*
     if (pid == current_pid)
     {
       std::cout << "Processor " << current_pid << " would get device " << first_word << " with nodes " << node1 << " and " << node2 << std::endl;
     }
-    global_dev_count[ current_pid ]--;
-    if ( !global_dev_count[ current_pid ] )
-      current_pid++;
-    // If this is the last processor, change current_pid to processor 0
-    if (current_pid == p)
-      current_pid = 0;
-*/
 
     switch(first_word[0])
     {
@@ -261,10 +248,10 @@ mX_linear_DAE* mX_parse_utils::parse_netlist(std::string filename, int p, int pi
         double rvalue;
         input_str >> rvalue;
         
-        distributed_sparse_matrix_add_to(A,node1-1,node1-1,(double)(1)/rvalue);
-        distributed_sparse_matrix_add_to(A,node2-1,node2-1,(double)(1)/rvalue);
-        distributed_sparse_matrix_add_to(A,node1-1,node2-1,(double)(-1)/rvalue);
-        distributed_sparse_matrix_add_to(A,node2-1,node1-1,(double)(-1)/rvalue);
+        distributed_sparse_matrix_insert(A,node1-1,node1-1,(double)(1)/rvalue,current_pid);
+        distributed_sparse_matrix_insert(A,node2-1,node2-1,(double)(1)/rvalue,current_pid);
+        distributed_sparse_matrix_insert(A,node1-1,node2-1,(double)(-1)/rvalue,current_pid);
+        distributed_sparse_matrix_insert(A,node2-1,node1-1,(double)(-1)/rvalue,current_pid);
       }
 
       break;
@@ -276,10 +263,10 @@ mX_linear_DAE* mX_parse_utils::parse_netlist(std::string filename, int p, int pi
         double cvalue;
         input_str >> cvalue;
         
-        distributed_sparse_matrix_add_to(B,node1-1,node1-1,cvalue);
-        distributed_sparse_matrix_add_to(B,node2-1,node2-1,cvalue);
-        distributed_sparse_matrix_add_to(B,node1-1,node2-1,-cvalue);
-        distributed_sparse_matrix_add_to(B,node2-1,node1-1,-cvalue);
+        distributed_sparse_matrix_insert(B,node1-1,node1-1,cvalue,current_pid);
+        distributed_sparse_matrix_insert(B,node2-1,node2-1,cvalue,current_pid);
+        distributed_sparse_matrix_insert(B,node1-1,node2-1,-cvalue,current_pid);
+        distributed_sparse_matrix_insert(B,node2-1,node1-1,-cvalue,current_pid);
       }
 
       break;
@@ -297,11 +284,11 @@ mX_linear_DAE* mX_parse_utils::parse_netlist(std::string filename, int p, int pi
         double lvalue;
         input_str >> lvalue;
         
-        distributed_sparse_matrix_add_to(A,k-1,node1-1,(double)(1));
-        distributed_sparse_matrix_add_to(A,k-1,node2-1,(double)(-1));
-        distributed_sparse_matrix_add_to(B,k-1,k-1,-lvalue);
-        distributed_sparse_matrix_add_to(A,node1-1,k-1,(double)(1));
-        distributed_sparse_matrix_add_to(A,node2-1,k-1,(double)(-1));
+        distributed_sparse_matrix_insert(A,k-1,node1-1,(double)(1),current_pid);
+        distributed_sparse_matrix_insert(A,k-1,node2-1,(double)(-1),current_pid);
+        distributed_sparse_matrix_insert(B,k-1,k-1,-lvalue,current_pid);
+        distributed_sparse_matrix_insert(A,node1-1,k-1,(double)(1),current_pid);
+        distributed_sparse_matrix_insert(A,node2-1,k-1,(double)(-1),current_pid);
       }
 
       break;
@@ -316,12 +303,12 @@ mX_linear_DAE* mX_parse_utils::parse_netlist(std::string filename, int p, int pi
         
         int k = num_internal_nodes + voltage_src_number;
 
-        distributed_sparse_matrix_add_to(A,k-1,node1-1,(double)(1));
-        distributed_sparse_matrix_add_to(A,k-1,node2-1,(double)(-1));
-        distributed_sparse_matrix_add_to(A,node1-1,k-1,(double)(-1));
-        distributed_sparse_matrix_add_to(A,node2-1,k-1,(double)(1));
+        distributed_sparse_matrix_insert(A,k-1,node1-1,(double)(1),current_pid);
+        distributed_sparse_matrix_insert(A,k-1,node2-1,(double)(-1),current_pid);
+        distributed_sparse_matrix_insert(A,node1-1,k-1,(double)(-1),current_pid);
+        distributed_sparse_matrix_insert(A,node2-1,k-1,(double)(1),current_pid);
         
-        if ((k-1 >= start_row) && (k-1 <= end_row))
+        if (current_pid == pid)
         {
           mX_source* src = parse_source(input_str);
         
@@ -329,12 +316,12 @@ mX_linear_DAE* mX_parse_utils::parse_netlist(std::string filename, int p, int pi
           scaled_src->src = src;
           scaled_src->scale = (double)(1);
 
-          if(!(dae->b[k-1-start_row]))
+          if(!(dae->b[k-1]))
           {
-            dae->b[k-1-start_row] = new mX_linear_DAE_RHS_entry();
+            dae->b[k-1] = new mX_linear_DAE_RHS_entry();
           }
 
-          (dae->b[k-1-start_row])->scaled_src_list.push_back(scaled_src);
+          (dae->b[k-1])->scaled_src_list.push_back(scaled_src);
 
         }
 
@@ -346,65 +333,61 @@ mX_linear_DAE* mX_parse_utils::parse_netlist(std::string filename, int p, int pi
       case 'I':
 
       {
-        if ((node1-1 >= start_row) && (node1-1 <= end_row))
+        if (current_pid == pid )
         {
-          mX_source* src = parse_source(input_str);
+          if (node1)
+          {
+            mX_source* src = parse_source(input_str);
         
-          mX_scaled_source* scaled_src = new mX_scaled_source();
-          scaled_src->src = src;
-          scaled_src->scale = (double)(1);
+            mX_scaled_source* scaled_src = new mX_scaled_source();
+            scaled_src->src = src;
+            scaled_src->scale = (double)(1);
 
-          if(!(dae->b[node1-1-start_row]))
-          {
-            dae->b[node1-1-start_row] = new mX_linear_DAE_RHS_entry();
+            if(!(dae->b[node1-1]))
+            {
+              dae->b[node1-1] = new mX_linear_DAE_RHS_entry();
+            }
+
+            (dae->b[node1-1])->scaled_src_list.push_back(scaled_src);
           }
-
-          (dae->b[node1-1-start_row])->scaled_src_list.push_back(scaled_src);
-
-          if ((node2-1 >= start_row) && (node2-1 <= end_row))
+          if (node2)
           {
+            mX_source* src = parse_source(input_str);
+        
             mX_scaled_source* scaled_src_2 = new mX_scaled_source();
             scaled_src_2->src = src;
             scaled_src_2->scale = (double)(-1);
 
-            if(!(dae->b[node2-1-start_row]))
+            if(!(dae->b[node2-1]))
             {
-              dae->b[node2-1-start_row] = new mX_linear_DAE_RHS_entry();
+              dae->b[node2-1] = new mX_linear_DAE_RHS_entry();
             }
 
-            (dae->b[node2-1-start_row])->scaled_src_list.push_back(scaled_src_2);
+            (dae->b[node2-1])->scaled_src_list.push_back(scaled_src_2);
 
-          }
-        }
-
-        else
-        {
-          if ((node2-1 >= start_row) && (node2-1 <= end_row))
-          {
-            mX_source* src = parse_source(input_str);
-          
-            mX_scaled_source* scaled_src = new mX_scaled_source();
-            scaled_src->src = src;
-            scaled_src->scale = (double)(-1);
-
-            if(!(dae->b[node2-1-start_row]))
-            {
-              dae->b[node2-1-start_row] = new mX_linear_DAE_RHS_entry();
-            }
-
-            (dae->b[node2-1-start_row])->scaled_src_list.push_back(scaled_src);
-            
           }
         }
       }
 
       break;
     }
+
+    // Update device count and determine if next processor is to receive new device.
+    global_dev_count[ current_pid ]--;
+    if ( !global_dev_count[ current_pid ] )
+      current_pid++;
+    // If this is the last processor, change current_pid to processor 0
+    if (current_pid == p)
+      current_pid = 0;
+
   }
 
   // whew! all the lines have been read
     // and each processor hopefully has his correct share of the DAE
   infile.close();
+
+  // Now tell the matrices to assemble themselves and determine off-processor communication.
+  distributed_sparse_matrix_finish( A, B, dae->b );
 
   return dae;
 }

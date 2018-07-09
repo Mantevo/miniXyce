@@ -36,6 +36,7 @@
 #include <iostream>
 #include <iomanip>
 #include <vector>
+#include "mX_comm.h"
 #include "mX_parser.h"
 #include "mX_source.h"
 #include "mX_sparse_matrix.h"
@@ -50,6 +51,7 @@
 #include "mpi.h"
 #endif
 
+using namespace mX_comm_utils;
 using namespace mX_parse_utils;
 using namespace mX_source_utils;
 using namespace mX_linear_DAE_utils;
@@ -74,7 +76,7 @@ int main(int argc, char* argv[])
 
   std::string ckt_netlist_filename;
   double t_start, t_step, t_stop, tol, res;
-  int k, iters, restarts;
+  int k=0, iters=0, restarts=0;
 
   std::vector<double> x;
   bool init_cond_specified;
@@ -127,12 +129,39 @@ int main(int argc, char* argv[])
     doc.get("Circuit_attributes")->add("Current_sources_(I)",num_current_sources);
   }
 
-  int num_my_rows = dae->A->end_row - dae->A->start_row + 1;
   int num_my_nnz = dae->A->local_nnz, sum_nnz = dae->A->local_nnz;
   int min_nnz = num_my_nnz, max_nnz = num_my_nnz;
+  int num_my_rows = dae->A->local_rows.size();
   int min_rows = num_my_rows, max_rows = num_my_rows, sum_rows = num_my_rows;
+  int num_my_overlap = dae->A->overlap_rows.size();
+  int min_overlap = num_my_overlap, max_overlap = num_my_overlap, sum_overlap = num_my_overlap;
 
-  /*
+#ifdef HAVE_MPI
+  MPI_Allreduce(&num_my_nnz,&sum_nnz,1,MPI_INT,MPI_SUM,MPI_COMM_WORLD);
+  MPI_Allreduce(&num_my_nnz,&min_nnz,1,MPI_INT,MPI_MIN,MPI_COMM_WORLD);
+  MPI_Allreduce(&num_my_nnz,&max_nnz,1,MPI_INT,MPI_MAX,MPI_COMM_WORLD);
+  MPI_Allreduce(&num_my_rows,&sum_rows,1,MPI_INT,MPI_SUM,MPI_COMM_WORLD);
+  MPI_Allreduce(&num_my_rows,&min_rows,1,MPI_INT,MPI_MIN,MPI_COMM_WORLD);
+  MPI_Allreduce(&num_my_rows,&max_rows,1,MPI_INT,MPI_MAX,MPI_COMM_WORLD);
+  MPI_Allreduce(&num_my_overlap,&sum_overlap,1,MPI_INT,MPI_SUM,MPI_COMM_WORLD);
+  MPI_Allreduce(&num_my_overlap,&min_overlap,1,MPI_INT,MPI_MIN,MPI_COMM_WORLD);
+  MPI_Allreduce(&num_my_overlap,&max_overlap,1,MPI_INT,MPI_MAX,MPI_COMM_WORLD);
+#endif
+
+  doc.add("Matrix_attributes","");
+  doc.get("Matrix_attributes")->add("Global_rows",total_unknowns);
+  doc.get("Matrix_attributes")->add("Rows_per_proc_MIN",min_rows);
+  doc.get("Matrix_attributes")->add("Rows_per_proc_MAX",max_rows);
+  doc.get("Matrix_attributes")->add("Rows_per_proc_AVG",(double)sum_rows/p);
+  doc.get("Matrix_attributes")->add("Global_overlap_rows",sum_overlap);
+  doc.get("Matrix_attributes")->add("Rows_overlap_per_proc_MIN",min_overlap);
+  doc.get("Matrix_attributes")->add("Rows_overlap_per_proc_MAX",max_overlap);
+  doc.get("Matrix_attributes")->add("Rows_overlap_per_proc_AVG",(double)sum_overlap/p);
+  doc.get("Matrix_attributes")->add("Global_NNZ",sum_nnz);
+  doc.get("Matrix_attributes")->add("NNZ_per_proc_MIN",min_nnz);
+  doc.get("Matrix_attributes")->add("NNZ_per_proc_MAX",max_nnz);
+  doc.get("Matrix_attributes")->add("NNZ_per_proc_AVG",(double)sum_nnz/p);
+        
   for (int proc = 0; proc < p; proc++)
   {
     if (pid == proc)
@@ -145,47 +174,97 @@ int main(int argc, char* argv[])
         std::cout << " ( " << (*it1)->pid << " ) " << (*it1)->indices.size() << " ";
       }
       std::cout << std::endl;
+      int num_my_recvs = dae->A->recv_instructions.size();
+      std::cout << "Processor : " << pid << " has " << num_my_recvs << " recvs: ";
+      for (it1 = dae->A->recv_instructions.begin(); it1 != dae->A->recv_instructions.end(); it1++)
+      {
+        std::cout << " ( " << (*it1)->pid << " ) " << (*it1)->indices.size() << " ";
+      }
+      std::cout << std::endl;
     }
   }
-  */
 
-#ifdef HAVE_MPI
-  MPI_Allreduce(&num_my_nnz,&sum_nnz,1,MPI_INT,MPI_SUM,MPI_COMM_WORLD);
-  MPI_Allreduce(&num_my_nnz,&min_nnz,1,MPI_INT,MPI_MIN,MPI_COMM_WORLD);
-  MPI_Allreduce(&num_my_nnz,&max_nnz,1,MPI_INT,MPI_MAX,MPI_COMM_WORLD);
-  MPI_Allreduce(&num_my_rows,&sum_rows,1,MPI_INT,MPI_SUM,MPI_COMM_WORLD);
-  MPI_Allreduce(&num_my_rows,&min_rows,1,MPI_INT,MPI_MIN,MPI_COMM_WORLD);
-  MPI_Allreduce(&num_my_rows,&max_rows,1,MPI_INT,MPI_MAX,MPI_COMM_WORLD);
-#endif
+  std::vector<double> init_RHS = evaluate_b_old(t_start,dae);
+  if (pid == 0)
+  {
+    std::cout << "init_RHS: " << std::endl;
+    for (int i=0; i<total_unknowns; i++)
+    {
+      std::cout << init_RHS[i] << std::endl;
+    }
+  } 
 
-  doc.add("Matrix_attributes","");
-  doc.get("Matrix_attributes")->add("Global_rows",sum_rows);
-  doc.get("Matrix_attributes")->add("Rows_per_proc_MIN",min_rows);
-  doc.get("Matrix_attributes")->add("Rows_per_proc_MAX",max_rows);
-  doc.get("Matrix_attributes")->add("Rows_per_proc_AVG",(double)sum_rows/p);
-  doc.get("Matrix_attributes")->add("Global_NNZ",sum_nnz);
-  doc.get("Matrix_attributes")->add("NNZ_per_proc_MIN",min_nnz);
-  doc.get("Matrix_attributes")->add("NNZ_per_proc_MAX",max_nnz);
-  doc.get("Matrix_attributes")->add("NNZ_per_proc_AVG",(double)sum_nnz/p);
-        
+  if (pid==0)
+    std::cout << "init_RHS2: " << std::endl;
+  distributed_vector init_RHS2 = evaluate_b(t_start,dae);
+  print_vector( init_RHS2 );
+
+  // from now you won't be needing any more Ax = b solves
+    // but you will be needing many (A + B/t_step)x = b solves
+    // so change A to (A + B/t_step) right now
+      // so you won't have to compute it at each time step
+
+  tstart = mX_timer();
+  distributed_sparse_matrix* A = dae->A;
+  distributed_sparse_matrix* B = dae->B;
+
+  if (pid==0)
+    std::cout << "A: " << std::endl;
+  print_matrix( *A );
+
+  std::vector<distributed_sparse_matrix_entry*>::iterator it1;
+  int row_idx = -1;
+
+  for (it1 = B->row_headers.begin(); it1 != B->row_headers.end(); it1++)
+  {
+    row_idx++;
+    distributed_sparse_matrix_entry* curr = *it1;
+
+    while (curr)
+    {
+      int col_idx = curr->column;
+      double value = (curr->value)/t_step;
+      distributed_sparse_matrix_add_to(A,row_idx,col_idx,value);
+
+      curr = curr->next_in_row;
+    }
+  }
+  double matrix_setup_tend = mX_timer() - tstart;
+
+  std::vector<double> y(total_unknowns,0.0);
+  sparse_matrix_vector_product( A, init_RHS, y );
+  for (int proc = 0; proc < p; proc++)
+  {
+    if (pid == proc)
+    {
+      std::cout << "Proc " << proc << ", y = A*init_RHS: " << std::endl;
+      for (int i=0; i<total_unknowns; i++)
+      {
+        std::cout << y[i] << std::endl;
+      }
+    }
+  } 
+
+  distributed_vector y2( total_unknowns, p, pid, A->local_rows, A->overlap_rows, A->send_instructions, A->recv_instructions );
+  sparse_matrix_vector_product( A, init_RHS2, y2 );
+  if (pid==0)
+    std::cout << "y2: " << std::endl;
+  print_vector( y2 );
+
   // compute the initial condition if not specified by user
 
-  int start_row = dae->A->start_row;
-  int end_row = dae->A->end_row;
   tstart = mX_timer();
         
+  distributed_vector init_cond_guess( total_unknowns, p, pid, A->local_rows, A->overlap_rows, A->send_instructions, A->recv_instructions );
+
+  if (pid==0)
+    std::cout << "Initial condition specified: " << init_cond_specified << std::endl;
+
   if (!init_cond_specified)
   {
-    std::vector<double> init_cond_guess;
+    mX_vector_utils::init_value( init_cond_guess, 0.0 );
 
-    for (int i = 0; i<num_my_rows; i++)
-    {
-      init_cond_guess.push_back((double)(0));
-    }
-
-    std::vector<double> init_RHS = evaluate_b(t_start,dae);
-
-    gmres(dae->A,init_RHS,init_cond_guess,tol,res,k,x,iters,restarts);
+    //gmres(dae->A,init_RHS,init_cond_guess,tol,res,k,x,iters,restarts);
 
     doc.add("DCOP Calculation","");
     doc.get("DCOP Calculation")->add("Init_cond_specified", false);
@@ -202,6 +281,9 @@ int main(int argc, char* argv[])
   }
   tend = mX_timer() - tstart;
   doc.get("DCOP Calculation")->add("DCOP_calculation_time",tend);
+
+  /*  A LOT OF STUFF BEING COMMENTED OUT NOW DURING THE REWRITE OF THE PARSER 
+
 
   // write the headers and computed initial condition to file
 
@@ -267,7 +349,7 @@ int main(int argc, char* argv[])
   distributed_sparse_matrix* B = dae->B;
 
   std::vector<distributed_sparse_matrix_entry*>::iterator it1;
-  int row_idx = start_row - 1;
+  int row_idx = -1;
 
   for (it1 = B->row_headers.begin(); it1 != B->row_headers.end(); it1++)
   {
@@ -373,6 +455,8 @@ int main(int argc, char* argv[])
   doc.get("Transient Calculation")->add("Transient_calculation_time",tend-tstart);
   doc.add("I/O File Time",io_tend);
   doc.add("Total Simulation Time",sim_end);
+
+  A LOT OF STUFF BEING COMMENTED OUT NOW DURING THE REWRITE OF THE PARSER */
 
   if (pid==0) { // Only PE 0 needs to compute and report timing results
 
