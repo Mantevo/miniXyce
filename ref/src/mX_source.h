@@ -45,6 +45,7 @@ namespace mX_source_utils
 
 		public:
 
+                virtual ~mX_source() {}
 		virtual double output(double t) = 0;
 	};
 
