@@ -89,10 +89,10 @@ int main(int argc, char* argv[])
   // build the DAE from the circuit netlist
 
   tstart = mX_timer();
-  int total_devices, total_unknowns, num_internal_nodes;
-  std::map<std::string, int> device_count;
+  int total_devices, total_unknowns, num_external_nodes;
+  std::map<char, int> device_count;
 
-  mX_linear_DAE* dae = parse_netlist(ckt_netlist_filename,p,pid,total_devices,total_unknowns,num_internal_nodes,device_count);
+  mX_linear_DAE* dae = parse_netlist(ckt_netlist_filename,p,pid,total_devices,total_unknowns,num_external_nodes,device_count);
 
   tend = mX_timer() - tstart;
   doc.add("Netlist_parsing_time",tend);
@@ -103,29 +103,29 @@ int main(int argc, char* argv[])
 
   doc.add("Circuit_attributes","");
   doc.get("Circuit_attributes")->add("Number_of_devices",total_devices);
-  if (device_count.find("R") != device_count.end())
+  if (device_count.find('R') != device_count.end())
   {
-    int num_resistors = device_count["R"];
+    int num_resistors = device_count['R'];
     doc.get("Circuit_attributes")->add("Resistors_(R)",num_resistors);
   }
-  if (device_count.find("L") != device_count.end())
+  if (device_count.find('L') != device_count.end())
   {
-    int num_inductors = device_count["L"];
+    int num_inductors = device_count['L'];
     doc.get("Circuit_attributes")->add("Inductors_(L)",num_inductors);
   }
-  if (device_count.find("C") != device_count.end())
+  if (device_count.find('C') != device_count.end())
   {
-    int num_capacitors = device_count["C"];
+    int num_capacitors = device_count['C'];
     doc.get("Circuit_attributes")->add("Capacitors_(C)",num_capacitors);
   }
-  if (device_count.find("V") != device_count.end())
+  if (device_count.find('V') != device_count.end())
   {
-    int num_voltage_sources = device_count["V"];
+    int num_voltage_sources = device_count['V'];
     doc.get("Circuit_attributes")->add("Voltage_sources_(V)",num_voltage_sources);
   }
-  if (device_count.find("I") != device_count.end())
+  if (device_count.find('I') != device_count.end())
   {
-    int num_current_sources = device_count["I"];
+    int num_current_sources = device_count['I'];
     doc.get("Circuit_attributes")->add("Current_sources_(I)",num_current_sources);
   }
 
@@ -212,6 +212,10 @@ int main(int argc, char* argv[])
     std::cout << "A: " << std::endl;
   print_matrix( *A );
 
+  if (pid==0)
+    std::cout << "B: " << std::endl;
+  print_matrix( *B );
+
   std::vector<distributed_sparse_matrix_entry*>::iterator it1;
   int row_idx = -1;
 
@@ -281,182 +285,6 @@ int main(int argc, char* argv[])
   }
   tend = mX_timer() - tstart;
   doc.get("DCOP Calculation")->add("DCOP_calculation_time",tend);
-
-  /*  A LOT OF STUFF BEING COMMENTED OUT NOW DURING THE REWRITE OF THE PARSER 
-
-
-  // write the headers and computed initial condition to file
-
-  tstart = mX_timer();
-  int dot_position = ckt_netlist_filename.find_first_of('.');
-
-  std::string out_filename = ckt_netlist_filename.substr(0,dot_position) + "_tran_results.prn";
-  std::ofstream* outfile=0;
-
-#ifdef HAVE_MPI  
-  // Prepare rcounts and displs for a contiguous gather of the full solution vector.
-  std::vector<int> rcounts( p, 0 ), displs( p, 0 );
-  MPI_Gather(&num_my_rows, 1, MPI_INT, &rcounts[0], 1, MPI_INT, 0, MPI_COMM_WORLD);
-  for (int i=1; i<p ; i++) displs[i] = displs[i-1] + rcounts[i-1];
-
-  std::vector<double> fullX( sum_rows, 0.0 ); 
-  MPI_Gatherv(&x[0], num_my_rows, MPI_DOUBLE, &fullX[0], &rcounts[0], &displs[0], MPI_DOUBLE, 0, MPI_COMM_WORLD);
-#endif
-
-  if (pid == 0)
-  {
-    outfile = new std::ofstream(out_filename.data(), std::ios::out);
-  
-    *outfile << std::setw(18) << "TIME";
-
-    for (int i = 0; i < sum_rows; i++)
-    {
-      std::stringstream ss2;
-      if (i < num_internal_nodes)
-        ss2 << "V" << i+1;
-      else
-        ss2 << "I" << i+1-num_internal_nodes;
-      *outfile << std::setw(18) << ss2.str();
-    }
-
-    *outfile << std::setw(20) << "num_GMRES_iters" << std::setw(20) << "num_GMRES_restarts" << std::endl;
-
-    outfile->precision(8);
-
-    *outfile << std::scientific << std::setw(18) << t_start;
-
-    for (int i = 0; i < sum_rows; i++)
-    {
-#ifdef HAVE_MPI
-      *outfile << std::setw(18) << fullX[i];
-#else
-      *outfile << std::setw(18) << x[i];
-#endif
-    }
-
-    *outfile << std::fixed << std::setw(20)  << iters << std::setw(20) << restarts << std::endl;
-  }
-
-  double io_tend = mX_timer() - tstart;
-   
-  // from now you won't be needing any more Ax = b solves
-    // but you will be needing many (A + B/t_step)x = b solves
-    // so change A to (A + B/t_step) right now
-      // so you won't have to compute it at each time step
-
-  tstart = mX_timer();
-  distributed_sparse_matrix* A = dae->A;
-  distributed_sparse_matrix* B = dae->B;
-
-  std::vector<distributed_sparse_matrix_entry*>::iterator it1;
-  int row_idx = -1;
-
-  for (it1 = B->row_headers.begin(); it1 != B->row_headers.end(); it1++)
-  {
-    row_idx++;
-    distributed_sparse_matrix_entry* curr = *it1;
-
-    while (curr)
-    {
-      int col_idx = curr->column;
-      double value = (curr->value)/t_step;
-      distributed_sparse_matrix_add_to(A,row_idx,col_idx,value);
-
-      curr = curr->next_in_row;
-    }
-  }
-  double matrix_setup_tend = mX_timer() - tstart;
-
-  // this is where the actual transient simulation starts
-
-  tstart = mX_timer();
-  double t = t_start + t_step;
-  double total_gmres_res = 0.0;
-  int total_gmres_iters = 0;
-  int trans_steps = 0;
-
-  while (t < t_stop)
-  {
-    trans_steps++;
-
-    // new time point t => new value for b(t)
-
-    std::vector<double> b = evaluate_b(t,dae);
-
-    // build the linear system Ax = b that needs to be solved at this time point
-      // Backward Euler is used at every iteration
-
-    std::vector<double> RHS;
-    sparse_matrix_vector_product(B,x,RHS);
-
-    for (int i = 0; i < num_my_rows; i++)
-    {
-      RHS[i] /= t_step;
-      RHS[i] += b[i];
-    }
-
-    // now solve the linear system just built using GMRES(k)
-
-    gmres(A,RHS,x,tol,res,k,x,iters,restarts);
-                total_gmres_iters += iters;
-                total_gmres_res += res;
-
-    // write the results to file
-          double io_tstart = mX_timer();  
-#ifdef HAVE_MPI
-                MPI_Gatherv(&x[0], num_my_rows, MPI_DOUBLE, &fullX[0], &rcounts[0], &displs[0], MPI_DOUBLE, 0, MPI_COMM_WORLD);
-#endif
-    if (pid == 0)
-    {
-      outfile->precision(8);
-      *outfile << std::scientific << std::setw(18) << t;
-
-      for (int i = 0; i < sum_rows; i++)
-      {
-#ifdef HAVE_MPI
-        *outfile << std::setw(18) << fullX[i];
-#else
-        *outfile << std::setw(18) << x[i];
-#endif
-      }
-
-      *outfile << std::fixed << std::setw(20)  << iters << std::setw(20) << restarts << std::endl;
-    }
-
-    io_tend += (mX_timer() - io_tstart);
-
-    // increment t
-
-    t += t_step;
-
-  }
-  
-  // Hurray, the transient simulation is done!
-  if (pid ==0)
-  {  
-    outfile->close();
-    delete outfile;
-  }
-        
-  // Document transient simulation performance
-     
-  tend = mX_timer();
-  double sim_end = tend - sim_start;
-  doc.add("Transient Calculation","");
-  doc.get("Transient Calculation")->add("Number_of_time_steps", trans_steps);
-  doc.get("Transient Calculation")->add("Time_start", t_start);
-  doc.get("Transient Calculation")->add("Time_end", t_stop);
-  doc.get("Transient Calculation")->add("Time_step", t_step);
-  doc.get("Transient Calculation")->add("GMRES_tolerance",tol);
-  doc.get("Transient Calculation")->add("GMRES_subspace_dim",k);
-  doc.get("Transient Calculation")->add("GMRES_average_iters",total_gmres_iters/trans_steps);
-  doc.get("Transient Calculation")->add("GMRES_average_res",total_gmres_res/trans_steps);
-  doc.get("Transient Calculation")->add("Matrix_setup_time",matrix_setup_tend);
-  doc.get("Transient Calculation")->add("Transient_calculation_time",tend-tstart);
-  doc.add("I/O File Time",io_tend);
-  doc.add("Total Simulation Time",sim_end);
-
-  A LOT OF STUFF BEING COMMENTED OUT NOW DURING THE REWRITE OF THE PARSER */
 
   if (pid==0) { // Only PE 0 needs to compute and report timing results
 

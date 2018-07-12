@@ -33,15 +33,18 @@
 // Mentor : Heidi K Thornquist
 // Date : July 2010
 
+#include <map>
 #include <list>
 #include <vector>
 #include "mX_source.h"
 #include "mX_sparse_matrix.h"
 #include "mX_vector.h"
+#include "mX_device.h"
 
 using namespace mX_source_utils;
 using namespace mX_matrix_utils;
 using namespace mX_vector_utils;
+using namespace mX_device_utils;
 
 namespace mX_linear_DAE_utils
 {
@@ -64,6 +67,8 @@ namespace mX_linear_DAE_utils
     distributed_sparse_matrix* A;
     distributed_sparse_matrix* B;
     std::vector<mX_linear_DAE_RHS_entry*> b;
+
+    std::map<char, mX_device*> devices;
   };
 
   distributed_vector evaluate_b(double t, mX_linear_DAE* dae);

@@ -45,6 +45,6 @@ using namespace mX_linear_DAE_utils;
 
 namespace mX_parse_utils
 {
-	mX_linear_DAE* parse_netlist(std::string filename, int p, int pid, int &total_devices, int &total_unknowns, int &num_internal_nodes, std::map<std::string, int>& device_count);
+	mX_linear_DAE* parse_netlist(std::string filename, int p, int pid, int &total_devices, int &total_unknowns, int &num_external_nodes, std::map<char, int>& device_count);
 }
 #endif

@@ -2,6 +2,7 @@
 OBJS = \
 	mX_source.o \
 	mX_linear_DAE.o \
+        mX_device.o \
 	mX_parms.o \
 	mX_sparse_matrix.o \
 	mX_vector.o \

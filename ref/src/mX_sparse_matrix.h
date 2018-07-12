@@ -95,7 +95,10 @@ namespace mX_matrix_utils
     distributed_sparse_matrix();
   };
 
-  void distributed_sparse_matrix_insert(distributed_sparse_matrix* M, int row_idx, int col_idx, double val, int proc);
+  distributed_sparse_matrix_entry* distributed_sparse_matrix_insert(distributed_sparse_matrix* M,
+                                                                    int row_idx, int col_idx);
+
+  void distributed_sparse_matrix_insert(distributed_sparse_matrix* M, int row_idx, int col_idx, double val);
 
   void distributed_sparse_matrix_finish(distributed_sparse_matrix* A, distributed_sparse_matrix* B,
                                         const std::vector<mX_linear_DAE_utils::mX_linear_DAE_RHS_entry*>& b);
@@ -112,5 +115,6 @@ namespace mX_matrix_utils
 
   void print_matrix(distributed_sparse_matrix &A);
 }
+
 
 #endif

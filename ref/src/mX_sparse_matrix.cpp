@@ -53,8 +53,10 @@ distributed_sparse_matrix::distributed_sparse_matrix()
   : start_row(0), end_row(0), local_nnz(0)
 {}
 
-void mX_matrix_utils::distributed_sparse_matrix_insert(distributed_sparse_matrix* M, int row_idx, int col_idx, double val, int proc)
+distributed_sparse_matrix_entry* mX_matrix_utils::distributed_sparse_matrix_insert(distributed_sparse_matrix* M, int row_idx, int col_idx)
 {
+  distributed_sparse_matrix_entry* ret = 0;
+
   // Inserts row_idx,col_idx,val into M.
   if ((row_idx < 0) || (col_idx < 0))
   {
@@ -62,61 +64,69 @@ void mX_matrix_utils::distributed_sparse_matrix_insert(distributed_sparse_matrix
       // useful in cases where you want to ignore the ground
         // because the ground is not really a node
 
-    return;
+    return ret;
   }
 
-  if (proc == M->my_pid)
-  { 
-    bool inserted = false;
-    bool found = false;
+  bool inserted = false;
+  bool found = false;
 
-    distributed_sparse_matrix_entry* prev = 0;
-    distributed_sparse_matrix_entry* curr = M->row_headers[row_idx];
+  distributed_sparse_matrix_entry* prev = 0;
+  distributed_sparse_matrix_entry* curr = M->row_headers[row_idx];
 
-    while (curr && !found)
+  while (curr && !found)
+  {
+    if (curr->column < col_idx)
     {
-      if (curr->column < col_idx)
+      prev = curr;
+      curr = curr->next_in_row;
+    }
+    else
+    {
+      if (curr->column == col_idx)
       {
-        prev = curr;
-        curr = curr->next_in_row;
+        ret = curr;
+        found = true;
       }
       else
       {
-        if (curr->column == col_idx)
-        {
-          curr->value = curr->value + val;
-          found = true;
-        }
-        else
-        {
-          // The entry should go here, but it's not less than or equal to, so the col_idx must be >.
-          break;
-        }
+        // The entry should go here, but it's not less than or equal to, so the col_idx must be >.
+        break;
       }
     }
-
-    if (!found)
-    {
-      distributed_sparse_matrix_entry* entry_ptr_1 = new distributed_sparse_matrix_entry(col_idx, val, curr);
-
-      if (prev)
-      {
-        prev->next_in_row = entry_ptr_1;
-      }
-      else
-      {
-        M->row_headers[row_idx] = entry_ptr_1;
-      }
-
-      inserted = true;
-    }
-
-    // The number of local nonzeros has gone up only if this is a new entry.
-    if (inserted)
-      M->local_nnz++;
   }
-} 
 
+  if (!found)
+  {
+    ret = new distributed_sparse_matrix_entry(col_idx, 0.0, curr);
+
+    if (prev)
+    {
+      prev->next_in_row = ret;
+    }
+    else
+    {
+      M->row_headers[row_idx] = ret;
+    }
+
+    inserted = true;
+  }
+
+  // The number of local nonzeros has gone up only if this is a new entry.
+  if (inserted)
+    M->local_nnz++;
+
+  return ret;
+}
+
+void mX_matrix_utils::distributed_sparse_matrix_insert(distributed_sparse_matrix* M, int row_idx, int col_idx, double val)
+{
+  // Find the entry or make a new entry using row and column index.
+  distributed_sparse_matrix_entry* entry = distributed_sparse_matrix_insert(M, row_idx, col_idx);
+
+  // Update the value.
+  if (entry)
+    entry->value += val;
+}
 
 void mX_matrix_utils::distributed_sparse_matrix_finish(distributed_sparse_matrix* A, distributed_sparse_matrix* B,
                                                        const std::vector<mX_linear_DAE_RHS_entry*>& b)
@@ -299,67 +309,12 @@ void mX_matrix_utils::distributed_sparse_matrix_finish(distributed_sparse_matrix
 
 void mX_matrix_utils::distributed_sparse_matrix_add_to(distributed_sparse_matrix* M, int row_idx, int col_idx, double val)
 {
-  // implements M[row_idx][col_idx] += val
-    // man, in the distributed matrix world, this simple thing takes such a lot of effort!
-
-  if ((row_idx < 0) || (col_idx < 0))
-  {
-    // check for negative indices
-      // useful in cases where you want to ignore the ground
-        // because the ground is not really a node
-
-    return;
-  }
-
-  bool inserted = false;
-  bool found = false;
-
-  distributed_sparse_matrix_entry* prev = 0;
-  distributed_sparse_matrix_entry* curr = M->row_headers[row_idx];
+  // Find the entry or make a new entry using row and column index.
+  distributed_sparse_matrix_entry* entry = distributed_sparse_matrix_insert(M, row_idx, col_idx);
   
-  while (curr && !found)
-  {
-    if (curr->column < col_idx)
-    {
-      prev = curr;
-      curr = curr->next_in_row;
-    }
-    else
-    {
-      if (curr->column == col_idx)
-      {
-        curr->value = curr->value + val;
-        found = true;
-      }
-      else
-      {
-        // The entry should go here, but it's not less than or equal to, so the col_idx must be >.
-        break;
-      }
-    }
-  }
-
-  if (!found)
-  {
-    distributed_sparse_matrix_entry* entry_ptr_1 = new distributed_sparse_matrix_entry(col_idx, val, curr);
-
-    if (prev)
-    {
-      prev->next_in_row = entry_ptr_1;
-    }
-    else
-    {
-      M->row_headers[row_idx] = entry_ptr_1;
-    }
-
-    inserted = true;
-  }
-
-  // The number of local nonzeros has gone up only if this is a new entry.
-  if (inserted)
-    M->local_nnz++;
-
-  return;
+  // Update the value.
+  if (entry)
+    entry->value += val;
 }
 
 
