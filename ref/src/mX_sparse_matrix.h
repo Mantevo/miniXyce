@@ -60,6 +60,10 @@ namespace mX_matrix_utils
     double value;  // value stored in the matrix
     distributed_sparse_matrix_entry* next_in_row;  // pointer to next entry in the same row
 
+    distributed_sparse_matrix_entry()
+      : column(-1), value(0.0), next_in_row(0)
+    {}
+
     distributed_sparse_matrix_entry(int col_in, double val_in, distributed_sparse_matrix_entry* nir_in)
       : column( col_in ), value( val_in ), next_in_row( nir_in )
     {}
@@ -88,6 +92,7 @@ namespace mX_matrix_utils
     int p;      // total number of parallel processors
     int my_pid; // this processors id
 
+    distributed_sparse_matrix_entry ground_node;
     std::vector<distributed_sparse_matrix_entry*> row_headers;
     std::list<mX_comm_utils::data_transfer_instruction*> send_instructions;
     std::list<mX_comm_utils::data_transfer_instruction*> recv_instructions;

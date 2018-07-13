@@ -141,11 +141,34 @@ void mX_linear_DAE_utils::destroy(mX_linear_DAE* dae)
   destroy_matrix( dae->B );
 
   // Destroy b
-  for (int i=0; i<dae->b.size(); ++i)
+  std::vector<mX_linear_DAE_RHS_entry*>::iterator b_it = dae->b.begin();
+  std::vector<mX_linear_DAE_RHS_entry*>::iterator b_end = dae->b.end();
+  for ( ; b_it != b_end; b_it++ )
   {
-    destroy_RHS( dae->b[i] );
+    destroy_RHS( *b_it );
   }
-  dae->b.resize(0);
+  dae->b.clear();
+
+  // Destroy devices
+  std::map<char, mX_device*>::iterator d_it = dae->devices.begin();
+  std::map<char, mX_device*>::iterator d_end = dae->devices.end();
+  for ( ; d_it != d_end; d_it++ )
+  {
+    delete d_it->second;
+  }
+  dae->devices.clear();
 
   delete dae; dae=0;
 }
+
+void mX_linear_DAE_utils::load_matrices(mX_linear_DAE* dae)
+{
+  std::map<char, mX_device*>::iterator d_it = dae->devices.begin();
+  std::map<char, mX_device*>::iterator d_end = dae->devices.end();
+  for ( ; d_it != d_end; d_it++ )
+  {
+    if (d_it->second)
+      d_it->second->load_matrices();
+  }
+}
+

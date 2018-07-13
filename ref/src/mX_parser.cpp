@@ -94,9 +94,6 @@ mX_linear_DAE* mX_parse_utils::parse_netlist(std::string filename, int p, int pi
     total_unknowns += mX_device_utils::num_internal_nodes( first_word[0], input_str ); 
   }
 
-  int num_voltage_sources = device_count['V'];
-  int num_inductors = device_count['L']; 
-
   // Sort the node list and count how many nonzero nodes there are.
   std::sort( node_list.begin(), node_list.end() );
   node_list.erase( std::unique( node_list.begin(), node_list.end() ), node_list.end() );
@@ -156,6 +153,8 @@ mX_linear_DAE* mX_parse_utils::parse_netlist(std::string filename, int p, int pi
   // In parallel, processor 0 communicates devices to all other processors
   // before taking its share.
   int current_pid = 0;
+  int extra_nodes_ptr = num_external_nodes;
+
   if (p > 1)
     current_pid = 1;   
 
@@ -199,167 +198,29 @@ mX_linear_DAE* mX_parse_utils::parse_netlist(std::string filename, int p, int pi
         currDevice = itr->second;
       }
 
-      distributed_sparse_matrix_entry* entry = 0;
-
-      switch(first_word[0])
-      {
-        case 'R':
-        {
-         //currDevice->add_device( input_str, dae );
- 
-        int node1, node2;
-        input_str >> node1;
-        input_str >> node2;
-
-        double rvalue;
-        input_str >> rvalue;
-        
-        entry = distributed_sparse_matrix_insert(A,node1-1,node1-1);
-        if (entry)
-          entry->value += (double)(1)/rvalue;
-        entry = distributed_sparse_matrix_insert(A,node2-1,node2-1);
-        if (entry)
-          entry->value += (double)(1)/rvalue;
-        entry = distributed_sparse_matrix_insert(A,node1-1,node2-1);
-        if (entry)
-          entry->value += (double)(-1)/rvalue;
-        entry = distributed_sparse_matrix_insert(A,node2-1,node1-1);
-        if (entry)
-          entry->value += (double)(-1)/rvalue;
-      }
-
-      break;
-
-      case 'C':
-      {
-        int node1, node2;
-        input_str >> node1;
-        input_str >> node2;
-
-        double cvalue;
-        input_str >> cvalue;
-        
-        distributed_sparse_matrix_insert(B,node1-1,node1-1,cvalue);
-        distributed_sparse_matrix_insert(B,node2-1,node2-1,cvalue);
-        distributed_sparse_matrix_insert(B,node1-1,node2-1,-cvalue);
-        distributed_sparse_matrix_insert(B,node2-1,node1-1,-cvalue);
-      }
-
-      break;
-
-      case 'L':
-
-      {
-        int node1, node2;
-        input_str >> node1;
-        input_str >> node2;
-
-        int k = num_external_nodes + num_voltage_sources + inductor_number;
-
-        double lvalue;
-        input_str >> lvalue;
-        
-        distributed_sparse_matrix_insert(A,k-1,node1-1,(double)(1));
-        distributed_sparse_matrix_insert(A,k-1,node2-1,(double)(-1));
-        distributed_sparse_matrix_insert(B,k-1,k-1,-lvalue);
-        distributed_sparse_matrix_insert(A,node1-1,k-1,(double)(1));
-        distributed_sparse_matrix_insert(A,node2-1,k-1,(double)(-1));
-      }
-
-      break;
-
-      case 'V':
-
-      {
-        int node1, node2;
-        input_str >> node1;
-        input_str >> node2;
-
-        int k = num_external_nodes + voltage_src_number;
-
-        distributed_sparse_matrix_insert(A,k-1,node1-1,(double)(1));
-        distributed_sparse_matrix_insert(A,k-1,node2-1,(double)(-1));
-        distributed_sparse_matrix_insert(A,node1-1,k-1,(double)(-1));
-        distributed_sparse_matrix_insert(A,node2-1,k-1,(double)(1));
-        
-        mX_source* src = parse_source(input_str);
-      
-        mX_scaled_source* scaled_src = new mX_scaled_source();
-        scaled_src->src = src;
-        scaled_src->scale = (double)(1);
-
-        if(!(dae->b[k-1]))
-        {
-          dae->b[k-1] = new mX_linear_DAE_RHS_entry();
-        }
-
-        (dae->b[k-1])->scaled_src_list.push_back(scaled_src);
-
-      }
-
-      break;
-
-      case 'I':
-
-      {
-        int node1, node2;
-        input_str >> node1;
-        input_str >> node2;
-
-        if (node1)
-        {
-          mX_source* src = parse_source(input_str);
-      
-          mX_scaled_source* scaled_src = new mX_scaled_source();
-          scaled_src->src = src;
-          scaled_src->scale = (double)(1);
-
-          if(!(dae->b[node1-1]))
-          {
-            dae->b[node1-1] = new mX_linear_DAE_RHS_entry();
-          }
-
-          (dae->b[node1-1])->scaled_src_list.push_back(scaled_src);
-        }
-        if (node2)
-        {
-          mX_source* src = parse_source(input_str);
-      
-          mX_scaled_source* scaled_src_2 = new mX_scaled_source();
-          scaled_src_2->src = src;
-          scaled_src_2->scale = (double)(-1);
-
-          if(!(dae->b[node2-1]))
-          {
-            dae->b[node2-1] = new mX_linear_DAE_RHS_entry();
-          }
-
-          (dae->b[node2-1])->scaled_src_list.push_back(scaled_src_2);
-
-        }
-      }
-
-      break;
-
-      default :
-      {
-        std::cout << "DO NOT RECOGNIZE DEVICE TYPE: " <<  first_word[0] << std::endl;
-      }
-
-      break;
-    }
-
+      // If the device generates internal nodes, increment the extra_nodes_ptr.
+      extra_nodes_ptr += currDevice->add_device( input_str, extra_nodes_ptr, dae );
     }
 
     // Update device count and determine if next processor is to receive new device.
     global_dev_count[ current_pid ]--;
     if ( !global_dev_count[ current_pid ] )
+    {
       current_pid++;
-    // If this is the last processor, change current_pid to processor 0
-    if (current_pid == p)
-      current_pid = 0;
+      // If this is the last processor, change current_pid to processor 0
+      if (current_pid == p)
+        current_pid = 0;
 
+#ifdef HAVE_MPI
+      std::cout << "Processor " << current_pid << " extra_nodes_ptr = " << extra_nodes_ptr << std::endl;
+      int my_extra_nodes_ptr = extra_nodes_ptr;
+      MPI_Allreduce(&my_extra_nodes_ptr,&extra_nodes_ptr,1,MPI_INT,MPI_MAX,MPI_COMM_WORLD);      
+#endif
+    }
   }
+
+  // Have each device type load their entries now.
+  load_matrices( dae );
 
   // whew! all the lines have been read
     // and each processor hopefully has his correct share of the DAE

@@ -55,7 +55,7 @@ distributed_sparse_matrix::distributed_sparse_matrix()
 
 distributed_sparse_matrix_entry* mX_matrix_utils::distributed_sparse_matrix_insert(distributed_sparse_matrix* M, int row_idx, int col_idx)
 {
-  distributed_sparse_matrix_entry* ret = 0;
+  distributed_sparse_matrix_entry* ret = &M->ground_node;
 
   // Inserts row_idx,col_idx,val into M.
   if ((row_idx < 0) || (col_idx < 0))

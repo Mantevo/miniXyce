@@ -42,6 +42,12 @@
 using namespace mX_vector_utils;
 using namespace mX_matrix_utils;
 
+namespace mX_linear_DAE_utils
+{
+  struct mX_linear_DAE;
+}
+
+
 namespace mX_device_utils
 {
 
@@ -55,20 +61,24 @@ class mX_device
         virtual ~mX_device() {}
 
         // Add a device described by this input stream, returns number of internal nodes required 
-        virtual int add_device( std::istringstream& input_str ) { return 0; }
+        virtual int add_device( std::istringstream& input_str, int extra_nodes_ptr, mX_linear_DAE_utils::mX_linear_DAE* dae ) { return 0; }
 
         // Return number of internal nodes introduced by this device type.
         virtual std::vector<std::pair<int,int> >& get_jacobian_stamp() { return jac_stamp_; }
 
         // Evaluate devices
         virtual void loadVector( distributed_vector& vec ) {}
-        virtual void loadMatrices( distributed_sparse_matrix& dfdx, distributed_sparse_matrix& dqdx ) {} 
+        virtual void load_matrices() {}
 
         // Some indication of flops for evaluating this device model.
         virtual int modelCost() { return 0; }
 
         // Character (letter) indicating which device type.
         virtual char deviceLabel() { return label_; }
+
+        protected:
+
+        std::vector<distributed_sparse_matrix_entry* > device_entries_;
 
         private:
 
@@ -83,17 +93,17 @@ class mX_resistor : public mX_device
         mX_resistor();
         virtual ~mX_resistor() {}
 
-        int add_device( std::istringstream& input_str );
+        int add_device( std::istringstream& input_str, int extra_nodes_ptr, mX_linear_DAE_utils::mX_linear_DAE* dae );
 
         void loadVector( distributed_vector& vec );
-        void loadMatrices( distributed_sparse_matrix& dfdx, distributed_sparse_matrix& dqdx ); 
+        void load_matrices();
 
         int modelCost() { return 1; }
 
         private:
 
-        std::map<std::string, int> deviceMap_;
-        std::vector<std::vector<int> > deviceNodes_;
+        std::map<std::string, int> device_map_;
+        std::vector<std::vector<int> > device_nodes_;
         std::vector<double> R_;
 };
 
@@ -104,17 +114,17 @@ class mX_inductor : public mX_device
         mX_inductor(); 
         virtual ~mX_inductor() {}
 
-        int add_device( std::istringstream& input_str );
+        int add_device( std::istringstream& input_str, int extra_nodes_ptr, mX_linear_DAE_utils::mX_linear_DAE* dae );
 
         void loadVector( distributed_vector& vec ); 
-        void loadMatrices( distributed_sparse_matrix& dfdx, distributed_sparse_matrix& dqdx ); 
+        void load_matrices();
 
         int modelCost() { return 1; }
 
         private:
 
-        std::map<std::string, int> deviceMap_;
-        std::vector<std::vector<int> > deviceNodes_;
+        std::map<std::string, int> device_map_;
+        std::vector<std::vector<int> > device_nodes_;
         std::vector<double> L_;
 };
 
@@ -125,18 +135,54 @@ class mX_capacitor : public mX_device
         mX_capacitor();
         virtual ~mX_capacitor() {}
 
-        int add_device( std::istringstream& input_str );
+        int add_device( std::istringstream& input_str, int extra_nodes_ptr, mX_linear_DAE_utils::mX_linear_DAE* dae );
 
         void loadVector( distributed_vector& vec ); 
-        void loadMatrices( distributed_sparse_matrix& dfdx, distributed_sparse_matrix& dqdx ); 
+        void load_matrices();
 
         int modelCost() { return 1; }
 
         private:
 
-        std::map<std::string, int> deviceMap_;
-        std::vector<std::vector<int> > deviceNodes_;
+        std::map<std::string, int> device_map_;
+        std::vector<std::vector<int> > device_nodes_;
         std::vector<double> C_;
+};
+
+class mX_vsrc: public mX_device
+{
+        public:
+
+        mX_vsrc();
+        virtual ~mX_vsrc() {}
+
+        int add_device( std::istringstream& input_str, int extra_nodes_ptr, mX_linear_DAE_utils::mX_linear_DAE* dae );
+
+        void loadVector( distributed_vector& vec );
+        void load_matrices();
+
+        int modelCost() { return 1; }
+
+        private:
+
+};
+
+class mX_isrc: public mX_device
+{
+        public:
+
+        mX_isrc();
+        virtual ~mX_isrc() {}
+
+        int add_device( std::istringstream& input_str, int extra_nodes_ptr, mX_linear_DAE_utils::mX_linear_DAE* dae );
+
+        void loadVector( distributed_vector& vec );
+        void load_matrices();
+
+        int modelCost() { return 1; }
+
+        private:
+
 };
 
 mX_device* create_device( char device_label );

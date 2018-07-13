@@ -73,6 +73,7 @@ namespace mX_linear_DAE_utils
 
   distributed_vector evaluate_b(double t, mX_linear_DAE* dae);
   std::vector<double> evaluate_b_old(double t, mX_linear_DAE* dae);
+  void load_matrices(mX_linear_DAE* dae);
   void destroy(mX_linear_DAE* dae);
   void destroy_RHS(mX_linear_DAE_RHS_entry* entry);
 }
