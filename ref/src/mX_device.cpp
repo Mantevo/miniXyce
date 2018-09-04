@@ -66,7 +66,7 @@ int mX_resistor::add_device( std::istringstream& input_str, int extra_nodes_ptr,
   return 0;
 }
 
-void mX_resistor::loadVector( distributed_vector& vec )
+void mX_resistor::load_vector( distributed_vector& vec )
 {
 }
 
@@ -115,7 +115,7 @@ int mX_inductor::add_device( std::istringstream& input_str, int extra_nodes_ptr,
   return 1;
 }
 
-void mX_inductor::loadVector( distributed_vector& vec ) 
+void mX_inductor::load_vector( distributed_vector& vec ) 
 {
 }
 
@@ -162,7 +162,7 @@ int mX_capacitor::add_device( std::istringstream& input_str, int extra_nodes_ptr
   return 0;
 }
 
-void mX_capacitor::loadVector( distributed_vector& vec ) 
+void mX_capacitor::load_vector( distributed_vector& vec ) 
 {
 }
 
@@ -216,7 +216,7 @@ int mX_vsrc::add_device( std::istringstream& input_str, int extra_nodes_ptr, mX_
   return 1;
 }
 
-void mX_vsrc::loadVector( distributed_vector& vec )
+void mX_vsrc::load_vector( distributed_vector& vec )
 {
 }
 
@@ -281,7 +281,7 @@ int mX_isrc::add_device( std::istringstream& input_str, int extra_nodes_ptr, mX_
   return 0;
 }
 
-void mX_isrc::loadVector( distributed_vector& vec )
+void mX_isrc::load_vector( distributed_vector& vec )
 {
 }
 

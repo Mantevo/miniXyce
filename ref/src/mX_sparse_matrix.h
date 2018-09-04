@@ -119,6 +119,8 @@ namespace mX_matrix_utils
   void destroy_matrix(distributed_sparse_matrix* A);
 
   void print_matrix(distributed_sparse_matrix &A);
+
+  void init_value(distributed_sparse_matrix& A, double val);
 }
 
 

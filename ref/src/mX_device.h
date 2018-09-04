@@ -67,7 +67,7 @@ class mX_device
         virtual std::vector<std::pair<int,int> >& get_jacobian_stamp() { return jac_stamp_; }
 
         // Evaluate devices
-        virtual void loadVector( distributed_vector& vec ) {}
+        virtual void load_vector( distributed_vector& vec ) {}
         virtual void load_matrices() {}
 
         // Some indication of flops for evaluating this device model.
@@ -95,7 +95,7 @@ class mX_resistor : public mX_device
 
         int add_device( std::istringstream& input_str, int extra_nodes_ptr, mX_linear_DAE_utils::mX_linear_DAE* dae );
 
-        void loadVector( distributed_vector& vec );
+        void load_vector( distributed_vector& vec );
         void load_matrices();
 
         int modelCost() { return 1; }
@@ -116,7 +116,7 @@ class mX_inductor : public mX_device
 
         int add_device( std::istringstream& input_str, int extra_nodes_ptr, mX_linear_DAE_utils::mX_linear_DAE* dae );
 
-        void loadVector( distributed_vector& vec ); 
+        void load_vector( distributed_vector& vec ); 
         void load_matrices();
 
         int modelCost() { return 1; }
@@ -137,7 +137,7 @@ class mX_capacitor : public mX_device
 
         int add_device( std::istringstream& input_str, int extra_nodes_ptr, mX_linear_DAE_utils::mX_linear_DAE* dae );
 
-        void loadVector( distributed_vector& vec ); 
+        void load_vector( distributed_vector& vec ); 
         void load_matrices();
 
         int modelCost() { return 1; }
@@ -158,7 +158,7 @@ class mX_vsrc: public mX_device
 
         int add_device( std::istringstream& input_str, int extra_nodes_ptr, mX_linear_DAE_utils::mX_linear_DAE* dae );
 
-        void loadVector( distributed_vector& vec );
+        void load_vector( distributed_vector& vec );
         void load_matrices();
 
         int modelCost() { return 1; }
@@ -176,7 +176,7 @@ class mX_isrc: public mX_device
 
         int add_device( std::istringstream& input_str, int extra_nodes_ptr, mX_linear_DAE_utils::mX_linear_DAE* dae );
 
-        void loadVector( distributed_vector& vec );
+        void load_vector( distributed_vector& vec );
         void load_matrices();
 
         int modelCost() { return 1; }

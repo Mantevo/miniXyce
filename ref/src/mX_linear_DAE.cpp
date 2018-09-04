@@ -163,6 +163,10 @@ void mX_linear_DAE_utils::destroy(mX_linear_DAE* dae)
 
 void mX_linear_DAE_utils::load_matrices(mX_linear_DAE* dae)
 {
+  // Initialize values to zero.
+  init_value( *(dae->A), 0.0 );
+  init_value( *(dae->B), 0.0 );
+
   std::map<char, mX_device*>::iterator d_it = dae->devices.begin();
   std::map<char, mX_device*>::iterator d_end = dae->devices.end();
   for ( ; d_it != d_end; d_it++ )

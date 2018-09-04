@@ -709,4 +709,22 @@ void mX_matrix_utils::print_matrix(distributed_sparse_matrix &A)
   }
 }
 
+void mX_matrix_utils::init_value(distributed_sparse_matrix& A, double val)
+{
+  for (int j=0; j<A.n; ++j)
+  {
+    distributed_sparse_matrix_entry* curr = A.row_headers[j];
+
+    while (curr)
+    {
+      curr->value = val;
+      curr = curr->next_in_row;
+    }
+  }
+#ifdef HAVE_MPI
+    MPI_Barrier(MPI_COMM_WORLD);
+#endif
+}
+
+
 
