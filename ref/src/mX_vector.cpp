@@ -81,8 +81,6 @@ void mX_vector_utils::print_vector(distributed_vector& x)
 
 double mX_vector_utils::norm2(distributed_vector& x)
 {
-  // at last, a function that's relatively simple to implement in parallel
-
   double global_norm;
   double local_norm = 0.0;
 
@@ -97,6 +95,24 @@ double mX_vector_utils::norm2(distributed_vector& x)
 #endif
 
   return std::sqrt(global_norm);
+}
+
+double mX_vector_utils::dot(distributed_vector& x, distributed_vector& y)
+{
+  double global_dot;
+  double local_dot = 0.0;
+
+  for (int i = 0; i < x.local_rows.size(); i++)
+  {
+    local_dot += x.values[i]*y.values[i];
+  }
+#ifdef HAVE_MPI
+  MPI_Allreduce(&local_dot,&global_dot,1,MPI_DOUBLE,MPI_SUM,MPI_COMM_WORLD);
+#else
+  global_dot = local_dot;
+#endif
+
+  return global_dot;
 }
 
 void mX_vector_utils::assemble_vector(distributed_vector& x)

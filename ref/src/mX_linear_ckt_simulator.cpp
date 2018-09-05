@@ -40,6 +40,7 @@
 #include "mX_parser.h"
 #include "mX_source.h"
 #include "mX_sparse_matrix.h"
+#include "mX_solver.h"
 #include "mX_linear_DAE.h"
 #include "mX_parms.h"
 #include "mX_timer.h"
@@ -56,6 +57,7 @@ using namespace mX_parse_utils;
 using namespace mX_source_utils;
 using namespace mX_linear_DAE_utils;
 using namespace mX_parms_utils;
+using namespace mX_solver_utils;
 
 int main(int argc, char* argv[])
 {
@@ -82,7 +84,7 @@ int main(int argc, char* argv[])
   bool init_cond_specified;
 
   double tstart = mX_timer();
-  get_parms(argc,argv,ckt_netlist_filename,t_start,t_step,t_stop,tol,k,x,init_cond_specified,p,pid);
+  get_parms(argc,argv,ckt_netlist_filename,t_start,t_step,t_stop,tol,k,restarts,x,init_cond_specified,p,pid);
   double tend = mX_timer() - tstart;
   doc.add("Parameter_parsing_time",tend);
 
@@ -259,23 +261,24 @@ int main(int argc, char* argv[])
 
   tstart = mX_timer();
         
-  distributed_vector init_cond_guess( total_unknowns, p, pid, A->local_rows, A->overlap_rows, A->send_instructions, A->recv_instructions );
+  distributed_vector x2( total_unknowns, p, pid, A->local_rows, A->overlap_rows, A->send_instructions, A->recv_instructions );
 
   if (pid==0)
     std::cout << "Initial condition specified: " << init_cond_specified << std::endl;
 
   if (!init_cond_specified)
   {
-    mX_vector_utils::init_value( init_cond_guess, 0.0 );
+    mX_vector_utils::init_value( x2 , 0.0 );
 
-    //gmres(dae->A,init_RHS,init_cond_guess,tol,res,k,x,iters,restarts);
+    int curr_restarts = restarts; 
+    gmres(dae->A,init_RHS2,x2,tol,res,k,iters,curr_restarts);
 
     doc.add("DCOP Calculation","");
     doc.get("DCOP Calculation")->add("Init_cond_specified", false);
     doc.get("DCOP Calculation")->add("GMRES_tolerance",tol);
     doc.get("DCOP Calculation")->add("GMRES_subspace_dim",k);
     doc.get("DCOP Calculation")->add("GMRES_iterations",iters);
-    doc.get("DCOP Calculation")->add("GMRES_restarts",restarts);
+    doc.get("DCOP Calculation")->add("GMRES_restarts",curr_restarts);
     doc.get("DCOP Calculation")->add("GMRES_native_residual",res);
   }
   else 

@@ -88,6 +88,8 @@ namespace mX_vector_utils
  
   double norm2(distributed_vector& v);
 
+  double dot(distributed_vector& x, distributed_vector& y);
+
   void print_vector(distributed_vector& v);
  
   void assemble_vector(distributed_vector& x);

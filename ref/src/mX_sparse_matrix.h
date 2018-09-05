@@ -114,8 +114,6 @@ namespace mX_matrix_utils
 
   void sparse_matrix_vector_product(distributed_sparse_matrix* A, std::vector<double> &x, std::vector<double> &y);
 
-  void gmres(distributed_sparse_matrix* A, std::vector<double> &b, std::vector<double> &x0, double &tol, double &err, int k, std::vector<double> &x, int &iters, int &restarts);
-
   void destroy_matrix(distributed_sparse_matrix* A);
 
   void print_matrix(distributed_sparse_matrix &A);

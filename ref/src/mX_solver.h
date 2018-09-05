@@ -1,5 +1,5 @@
-#ifndef __MX_PARMS_H__
-#define __MX_PARMS_H__
+#ifndef __MX_SOLVER_DEFS_H__
+#define __MX_SOLVER_DEFS_H__
 
 //@HEADER
 // ************************************************************************
@@ -31,23 +31,33 @@
 
 // Author : Karthik V Aadithya
 // Mentor : Heidi K Thornquist
-// Date : July 2010
+// Date : Sept 2018
 
-#include <string>
-#include <set>
 #include <vector>
+#include <list>
+#include <map>
 
-namespace mX_parms_utils
+namespace mX_comm_utils
 {
-  enum parm_names{CKT_FILENAME,T_START,T_STEP,T_STOP,TOL,K,MAX_RESTART,INIT_COND,PARMS_FILE,PREV};
+  struct data_transfer_instruction;
+}
 
-  void parse_command_line(int argc, std::vector<std::string> &argv, std::string &ckt_filename, double &t_start, double &t_step, double &t_stop, double &tol, int &k, int& max_restarts, 
-                          std::vector<double> &init_cond, std::string &parms_file, std::set<int> &specified_parms, int p, int pid);
+namespace mX_vector_utils
+{
+  struct distributed_vector;
+}
+ 
+namespace mX_matrix_utils
+{
+  struct distributed_sparse_matrix;
+}
 
-  std::vector<std::string> get_command_line_equivalent_from_file(std::string &filename);
+namespace mX_solver_utils
+{
+  void gmres(mX_matrix_utils::distributed_sparse_matrix* A, mX_vector_utils::distributed_vector &b, mX_vector_utils::distributed_vector &x,
+             double &tol, double &err, int k, int &iters, int &restarts);
 
-  void get_parms(int argc, char* argv[], std::string &ckt_filename, double &t_start, double &t_step, double &t_stop, double &tol, int &k, int &max_restarts,
-                 std::vector<double> &init_cond, bool &init_cond_specified, int p, int pid);
+  void rotg(double& a, double& b, double& c, double& s);
 }
 
 #endif

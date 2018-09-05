@@ -40,7 +40,8 @@
 
 using namespace mX_parms_utils;
 
-void mX_parms_utils::parse_command_line(int argc, std::vector<std::string> &argv, std::string &ckt_filename, double &t_start, double &t_step, double &t_stop, double &tol, int &k, std::vector<double> &init_cond, std::string &parms_file, std::set<int> &specified_parms, int p, int pid)
+void mX_parms_utils::parse_command_line(int argc, std::vector<std::string> &argv, std::string &ckt_filename, double &t_start, double &t_step, double &t_stop, double &tol, int &k, int &max_restarts,
+                                        std::vector<double> &init_cond, std::string &parms_file, std::set<int> &specified_parms, int p, int pid)
 {
   // take a command-line-ish argc and argv
   // parse it to get the parms specified there
@@ -114,12 +115,23 @@ void mX_parms_utils::parse_command_line(int argc, std::vector<std::string> &argv
       i++;
     }
 
-    if ((parm_name == "k") || (parm_name == "restart"))
+    if ((parm_name == "k"))
     {
       if (specified_parms.find(K) == specified_parms.end())
       {
         specified_parms.insert(K);
         k = atoi(argv[i].data());
+      }
+
+      i++;
+    }
+
+    if ((parm_name == "max_restarts"))
+    {
+      if (specified_parms.find(MAX_RESTART) == specified_parms.end())
+      {
+        specified_parms.insert(MAX_RESTART);
+        max_restarts = atoi(argv[i].data());
       }
 
       i++;
@@ -233,7 +245,8 @@ std::vector<std::string> mX_parms_utils::get_command_line_equivalent_from_file(s
   return command_line_equivalent;
 }
 
-void mX_parms_utils::get_parms(int argc, char* argv[], std::string &ckt_filename, double &t_start, double &t_step, double &t_stop, double &tol, int &k, std::vector<double> &init_cond, bool &init_cond_specified, int p, int pid)
+void mX_parms_utils::get_parms(int argc, char* argv[], std::string &ckt_filename, double &t_start, double &t_step, double &t_stop, double &tol, int &k, int &max_restarts,
+                               std::vector<double> &init_cond, bool &init_cond_specified, int p, int pid)
 {
   // get all the required simulation parameters
     // first go through command line options, they get first priority
@@ -254,7 +267,7 @@ void mX_parms_utils::get_parms(int argc, char* argv[], std::string &ckt_filename
     argv_strings.push_back((std::string)(argv[i]));
   }
 
-  parse_command_line(argc, argv_strings, ckt_filename, t_start, t_step, t_stop, tol, k, init_cond, parms_file, specified_parms, p, pid);
+  parse_command_line(argc, argv_strings, ckt_filename, t_start, t_step, t_stop, tol, k, max_restarts, init_cond, parms_file, specified_parms, p, pid);
 
   // scanned all command line parameters
     // now scan any files that are necessary
@@ -262,19 +275,19 @@ void mX_parms_utils::get_parms(int argc, char* argv[], std::string &ckt_filename
   if (specified_parms.find(PARMS_FILE) != specified_parms.end())
   {
     argv_strings = get_command_line_equivalent_from_file(parms_file);
-    parse_command_line(argv_strings.size(), argv_strings, ckt_filename, t_start, t_step, t_stop, tol, k, init_cond, parms_file, specified_parms, p, pid);
+    parse_command_line(argv_strings.size(), argv_strings, ckt_filename, t_start, t_step, t_stop, tol, k, max_restarts, init_cond, parms_file, specified_parms, p, pid);
   }
 
   if (specified_parms.find(PREV) != specified_parms.end())
   {
     std::string filename = "last_used_params.txt";
     argv_strings = get_command_line_equivalent_from_file(filename);
-    parse_command_line(argv_strings.size(), argv_strings, ckt_filename, t_start, t_step, t_stop, tol, k, init_cond, parms_file, specified_parms, p, pid);
+    parse_command_line(argv_strings.size(), argv_strings, ckt_filename, t_start, t_step, t_stop, tol, k, max_restarts, init_cond, parms_file, specified_parms, p, pid);
   }
 
   std::string filename = "default_params.txt";
   argv_strings = get_command_line_equivalent_from_file(filename);
-  parse_command_line(argv_strings.size(), argv_strings, ckt_filename, t_start, t_step, t_stop, tol, k, init_cond, parms_file, specified_parms, p, pid);
+  parse_command_line(argv_strings.size(), argv_strings, ckt_filename, t_start, t_step, t_stop, tol, k, max_restarts, init_cond, parms_file, specified_parms, p, pid);
   
   // by now all parms must have been obtained
 
@@ -284,6 +297,7 @@ void mX_parms_utils::get_parms(int argc, char* argv[], std::string &ckt_filename
   assert(specified_parms.find(T_STOP) != specified_parms.end());
   assert(specified_parms.find(TOL) != specified_parms.end());
   assert(specified_parms.find(K) != specified_parms.end());
+  assert(specified_parms.find(MAX_RESTART) != specified_parms.end());
 
   init_cond_specified = (specified_parms.find(INIT_COND) != specified_parms.end());
 
@@ -300,6 +314,7 @@ void mX_parms_utils::get_parms(int argc, char* argv[], std::string &ckt_filename
     outfile << "t_stop " << "= " << t_stop << std::endl;
     outfile << "tol " << "= " << tol << std::endl;
     outfile << "k " << "= " << k << std::endl;
+    outfile << "max_restarts " << "= " << max_restarts << std::endl;
 
     outfile.close();
   }
