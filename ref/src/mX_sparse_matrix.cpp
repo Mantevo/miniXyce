@@ -37,7 +37,7 @@
 #include "mX_comm.h"
 #include "mX_sparse_matrix.h"
 #include "mX_vector.h"
-#include "mX_linear_DAE.h"
+#include "mX_DAE.h"
 #include <map>
 #include <cmath>
 #include <iostream>
@@ -47,11 +47,27 @@
 using namespace mX_comm_utils;
 using namespace mX_matrix_utils;
 using namespace mX_vector_utils;
-using namespace mX_linear_DAE_utils;
+using namespace mX_DAE_utils;
 
 distributed_sparse_matrix::distributed_sparse_matrix()
   : start_row(0), end_row(0), local_nnz(0)
 {}
+
+distributed_sparse_matrix::distributed_sparse_matrix(int total_unknowns, int num_procs, int pid)
+  : start_row(0),
+    end_row(0), 
+    local_nnz(0),
+    n(total_unknowns),
+    p(num_procs),
+    my_pid(pid)
+{
+  // Initialize row_headers so that entries can be inserted.
+  for (int i = 0; i < total_unknowns; i++)
+  {
+    distributed_sparse_matrix_entry* null_ptr_1 = 0;
+    row_headers.push_back(null_ptr_1);
+  }
+}
 
 distributed_sparse_matrix_entry* mX_matrix_utils::distributed_sparse_matrix_insert(distributed_sparse_matrix* M, int row_idx, int col_idx)
 {
@@ -129,7 +145,7 @@ void mX_matrix_utils::distributed_sparse_matrix_insert(distributed_sparse_matrix
 }
 
 void mX_matrix_utils::distributed_sparse_matrix_finish(distributed_sparse_matrix* A, distributed_sparse_matrix* B,
-                                                       const std::vector<mX_linear_DAE_RHS_entry*>& b)
+                                                       const std::vector<mX_DAE_RHS_entry*>& b)
 {
   // MPI_MIN is used to assign processors to shared nodes, so put the 
   // fill value as the number of processors for nodes not required by this processor.
@@ -162,7 +178,7 @@ void mX_matrix_utils::distributed_sparse_matrix_finish(distributed_sparse_matrix
       curr = curr->next_in_row;
     } 
 
-    mX_linear_DAE_RHS_entry* curr_b = b[i];
+    mX_DAE_RHS_entry* curr_b = b[i];
     if (curr_b)
     {
       local_nnz_rows[i] = A->my_pid; 
@@ -184,7 +200,7 @@ void mX_matrix_utils::distributed_sparse_matrix_finish(distributed_sparse_matrix
     if (global_nnz_rows[i]==A->my_pid)
     {
       A->local_rows.push_back(i);
-      std::cout << "Processor " << A->my_pid << " owns row " << i << std::endl;
+      //std::cout << "Processor " << A->my_pid << " owns row " << i << std::endl;
 
       std::vector<int>::iterator it = std::find( local_nnz_cols.begin(), local_nnz_cols.end(), i );
       if ( it != local_nnz_cols.end() )
@@ -227,7 +243,7 @@ void mX_matrix_utils::distributed_sparse_matrix_finish(distributed_sparse_matrix
 
   for (std::vector<int>::iterator it = local_nnz_cols.begin(); it != local_nnz_cols.end(); it++)
   {
-    std::cout << "Processor " << A->my_pid << " has overlap row " << *it << std::endl;
+    //std::cout << "Processor " << A->my_pid << " has overlap row " << *it << std::endl;
   }
 
   // Set the local and ghost rows with both A and B.
@@ -276,7 +292,7 @@ void mX_matrix_utils::distributed_sparse_matrix_finish(distributed_sparse_matrix
       std::vector<int>::const_iterator it = std::find( A->local_rows.begin(), A->local_rows.end(), row );
       if (it != A->local_rows.end())
       {
-        std::cout << "Processor " << A->my_pid << " needs to send row " << row << " to processor " << pid_to_send_info << std::endl;
+        //std::cout << "Processor " << A->my_pid << " needs to send row " << row << " to processor " << pid_to_send_info << std::endl;
 
         std::list<data_transfer_instruction*>::iterator it1 = A->send_instructions.begin();
 
@@ -339,14 +355,14 @@ void mX_matrix_utils::sparse_matrix_vector_product(distributed_sparse_matrix* A,
       if (it2 != x.row_to_idx.end())
       {
         x_value = x.values[it2->second];
-        std::cout << "PID " << A->my_pid << ", col_idx = " << col_idx << ", x_idx = " << it2->second << ", x_values = " << x_value << std::endl;
+        //std::cout << "PID " << A->my_pid << ", col_idx = " << col_idx << ", x_idx = " << it2->second << ", x_values = " << x_value << std::endl;
       } 
 
       std::map<int,int>::iterator it3 = y.row_to_idx.find( i );
       if (it3 != y.row_to_idx.end())
       {
         y.values[it3->second] += (curr->value)*x_value;
-        std::cout << "PID " << A->my_pid << ", row_idx = " << i << ", y_idx = " << it3->second  << ", y_values = " << y.values[it3->second] << std::endl;
+        //std::cout << "PID " << A->my_pid << ", row_idx = " << i << ", y_idx = " << it3->second  << ", y_values = " << y.values[it3->second] << std::endl;
       }
 
       // Update pointer

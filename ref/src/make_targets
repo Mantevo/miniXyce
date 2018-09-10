@@ -1,8 +1,10 @@
 
 OBJS = \
 	mX_source.o \
-	mX_linear_DAE.o \
+	mX_DAE.o \
         mX_device.o \
+        mX_lin_device.o \
+        mX_nl_device.o \
 	mX_parms.o \
 	mX_sparse_matrix.o \
 	mX_vector.o \
@@ -25,7 +27,7 @@ UTIL_FILES = \
 	mX_timer.h
 
 MAIN_OBJ = \
-	mX_linear_ckt_simulator.o
+	mX_ckt_simulator.o
 
 MINIXYCE_INFO = 1
 
@@ -47,6 +49,8 @@ test : all
 	$(EXEC) ./miniXyce.x -c tests/cir2.net
 	$(EXEC) ./miniXyce.x -c tests/cir3.net
 	$(EXEC) ./miniXyce.x -c tests/cir4.net
+	$(EXEC) ./miniXyce.x -c tests/cir5.net
+	$(EXEC) ./miniXyce.x -c tests/cir6.net
 	perl ./tests/compareResults.pl "./tests/"
 
 %.o:%.cpp *.hpp

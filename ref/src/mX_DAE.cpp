@@ -34,21 +34,21 @@
 #include <mpi.h> // If this routine is compiled with -DHAVE_MPI
                  // then include mpi.h
 #endif
-#include "mX_linear_DAE.h"
+#include "mX_DAE.h"
 #include <algorithm>
 #include <iostream>
 
 using namespace mX_source_utils;
 using namespace mX_matrix_utils;
-using namespace mX_linear_DAE_utils;
+using namespace mX_DAE_utils;
 
-distributed_vector mX_linear_DAE_utils::evaluate_b(double t, mX_linear_DAE* dae)
+distributed_vector mX_DAE_utils::evaluate_b(double t, mX_DAE* dae)
 {
   distributed_vector global_result( dae->A->n, dae->A->p, dae->A->my_pid,
                                     dae->A->local_rows, dae->A->overlap_rows,
                                     dae->A->send_instructions, dae->A->recv_instructions );
 
-  std::vector<mX_linear_DAE_RHS_entry*>::iterator it2;
+  std::vector<mX_DAE_RHS_entry*>::iterator it2;
   std::map<int,int>::iterator row_it;
   for (int i = 0; i < dae->b.size(); i++)
   {
@@ -67,7 +67,6 @@ distributed_vector mX_linear_DAE_utils::evaluate_b(double t, mX_linear_DAE* dae)
       if (row_it != global_result.row_to_idx.end())
       {
         global_result.values[row_it->second] = sum;
-        std::cout << "b[" << i << "] = " << sum << " is a scaled source" << std::endl;
       }
     }
   }
@@ -77,13 +76,13 @@ distributed_vector mX_linear_DAE_utils::evaluate_b(double t, mX_linear_DAE* dae)
   return global_result;
 }
 
-std::vector<double> mX_linear_DAE_utils::evaluate_b_old(double t, mX_linear_DAE* dae)
+std::vector<double> mX_DAE_utils::evaluate_b_old(double t, mX_DAE* dae)
 {
   // given a linear DAE "A x + B x_dot = b(t)"
   // and a particular time point t
   // this function computes and returns the vector b at that time point t
 
-  std::vector<mX_linear_DAE_RHS_entry*>::iterator it2;
+  std::vector<mX_DAE_RHS_entry*>::iterator it2;
   std::vector<double> local_result, global_result;
 
   for (it2 = dae->b.begin(); it2 != dae->b.end(); it2++)
@@ -117,7 +116,7 @@ std::vector<double> mX_linear_DAE_utils::evaluate_b_old(double t, mX_linear_DAE*
 
 }
 
-void mX_linear_DAE_utils::destroy_RHS(mX_linear_DAE_RHS_entry* entry)
+void mX_DAE_utils::destroy_RHS(mX_DAE_RHS_entry* entry)
 {
   if (entry)
   {
@@ -132,7 +131,7 @@ void mX_linear_DAE_utils::destroy_RHS(mX_linear_DAE_RHS_entry* entry)
   }
 }
 
-void mX_linear_DAE_utils::destroy(mX_linear_DAE* dae)
+void mX_DAE_utils::destroy(mX_DAE* dae)
 {
   // Destroy A
   destroy_matrix( dae->A );
@@ -141,8 +140,8 @@ void mX_linear_DAE_utils::destroy(mX_linear_DAE* dae)
   destroy_matrix( dae->B );
 
   // Destroy b
-  std::vector<mX_linear_DAE_RHS_entry*>::iterator b_it = dae->b.begin();
-  std::vector<mX_linear_DAE_RHS_entry*>::iterator b_end = dae->b.end();
+  std::vector<mX_DAE_RHS_entry*>::iterator b_it = dae->b.begin();
+  std::vector<mX_DAE_RHS_entry*>::iterator b_end = dae->b.end();
   for ( ; b_it != b_end; b_it++ )
   {
     destroy_RHS( *b_it );
@@ -161,7 +160,7 @@ void mX_linear_DAE_utils::destroy(mX_linear_DAE* dae)
   delete dae; dae=0;
 }
 
-void mX_linear_DAE_utils::load_matrices(mX_linear_DAE* dae)
+void mX_DAE_utils::load_matrices(mX_DAE* dae)
 {
   // Initialize values to zero.
   init_value( *(dae->A), 0.0 );

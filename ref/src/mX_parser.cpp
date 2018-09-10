@@ -38,7 +38,7 @@
 #include <string>
 #include <vector>
 #include "mX_source.h"
-#include "mX_linear_DAE.h"
+#include "mX_DAE.h"
 #include "mX_sparse_matrix.h"
 #include "mX_parser.h"
 #include "mX_device.h"
@@ -49,10 +49,10 @@
 
 using namespace mX_source_utils;
 using namespace mX_matrix_utils;
-using namespace mX_linear_DAE_utils;
+using namespace mX_DAE_utils;
 using namespace mX_device_utils;
   
-mX_linear_DAE* mX_parse_utils::parse_netlist(std::string filename, int p, int pid, int &total_devices, int &total_unknowns, int &num_external_nodes, std::map<char, int>& device_count)
+mX_DAE* mX_parse_utils::parse_netlist(std::string filename, int p, int pid, int &total_devices, int &total_unknowns, int &num_external_nodes, std::map<char, int>& device_count)
 {
   std::ifstream infile;
   infile.open(filename.data());
@@ -124,7 +124,7 @@ mX_linear_DAE* mX_parse_utils::parse_netlist(std::string filename, int p, int pi
   MPI_Allreduce(&local_dev_count[0],&global_dev_count[0],p,MPI_INT,MPI_SUM,MPI_COMM_WORLD);
 #endif
 
-  mX_linear_DAE* dae = new mX_linear_DAE();
+  mX_DAE* dae = new mX_DAE();
   dae->A = new distributed_sparse_matrix();
   dae->B = new distributed_sparse_matrix();
 
@@ -146,7 +146,7 @@ mX_linear_DAE* mX_parse_utils::parse_netlist(std::string filename, int p, int pi
     A->row_headers.push_back(null_ptr_1);
     B->row_headers.push_back(null_ptr_1);
 
-    mX_linear_DAE_RHS_entry* null_ptr_2 = 0;
+    mX_DAE_RHS_entry* null_ptr_2 = 0;
     (dae->b).push_back(null_ptr_2);
   }
 
@@ -189,7 +189,7 @@ mX_linear_DAE* mX_parse_utils::parse_netlist(std::string filename, int p, int pi
       mX_device* currDevice = 0;
       if (itr == dae->devices.end())
       {
-        std::cout << "Processor " << current_pid << " didn't find container for device " << first_word[0] << std::endl;
+        //std::cout << "Processor " << current_pid << " didn't find container for device " << first_word[0] << std::endl;
         currDevice = create_device( first_word[0] );
         dae->devices[first_word[0]] = currDevice;
       }

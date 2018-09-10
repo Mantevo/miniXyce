@@ -49,7 +49,7 @@ using namespace mX_comm_utils;
 using namespace mX_matrix_utils;
 using namespace mX_vector_utils;
 using namespace mX_solver_utils;
-using namespace mX_linear_DAE_utils;
+using namespace mX_DAE_utils;
 
 void mX_solver_utils::gmres(distributed_sparse_matrix* A, distributed_vector &b, distributed_vector &x, double &tol, double &err, int k, int &iters, int &restarts)
 {

@@ -135,7 +135,7 @@ void mX_vector_utils::assemble_vector(distributed_vector& x)
       if (it3 != x.row_to_idx.end())
       {
         x_vec_entry = x.values[it3->second];
-        std::cout << "PID " << x.my_pid << ", SENDING row_idx = " << *it2 << ", x_idx = " << it3->second << ", x_values = " << x.values[it3->second] << std::endl;
+        //std::cout << "PID " << x.my_pid << ", SENDING row_idx = " << *it2 << ", x_idx = " << it3->second << ", x_values = " << x.values[it3->second] << std::endl;
       }
 
       MPI_Send(&x_vec_entry,1,MPI_DOUBLE,(*it1)->pid,*it2,MPI_COMM_WORLD);
@@ -154,7 +154,7 @@ void mX_vector_utils::assemble_vector(distributed_vector& x)
       if (it3 != x.row_to_idx.end())
       {
         x.values[it3->second] += x_vec_entry;
-        std::cout << "PID " << x.my_pid << ", UPDATED row_idx = " << *it2 << ", x_idx = " << it3->second << ", x_values = " << x.values[it3->second] << std::endl;
+        //std::cout << "PID " << x.my_pid << ", UPDATED row_idx = " << *it2 << ", x_idx = " << it3->second << ", x_values = " << x.values[it3->second] << std::endl;
       }
    }
  }

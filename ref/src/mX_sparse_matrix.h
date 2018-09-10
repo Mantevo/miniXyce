@@ -37,9 +37,9 @@
 #include <list>
 #include <map>
 
-namespace mX_linear_DAE_utils
+namespace mX_DAE_utils
 {
-  struct mX_linear_DAE_RHS_entry;
+  struct mX_DAE_RHS_entry;
 }
 
 namespace mX_comm_utils
@@ -98,6 +98,8 @@ namespace mX_matrix_utils
     std::list<mX_comm_utils::data_transfer_instruction*> recv_instructions;
 
     distributed_sparse_matrix();
+
+    distributed_sparse_matrix(int total_unknowns, int num_procs, int pid);
   };
 
   distributed_sparse_matrix_entry* distributed_sparse_matrix_insert(distributed_sparse_matrix* M,
@@ -106,7 +108,7 @@ namespace mX_matrix_utils
   void distributed_sparse_matrix_insert(distributed_sparse_matrix* M, int row_idx, int col_idx, double val);
 
   void distributed_sparse_matrix_finish(distributed_sparse_matrix* A, distributed_sparse_matrix* B,
-                                        const std::vector<mX_linear_DAE_utils::mX_linear_DAE_RHS_entry*>& b);
+                                        const std::vector<mX_DAE_utils::mX_DAE_RHS_entry*>& b);
 
   void distributed_sparse_matrix_add_to(distributed_sparse_matrix* M, int row_idx, int col_idx, double val);
 
