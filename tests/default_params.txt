@@ -1,7 +1,7 @@
 circuit = tests/cir1.net
 t_start = 0
 t_step = 1e-08
-t_stop = 5e-06
+t_stop = 5e-05
 tol = 1e-8
 k = 10
 max_restarts = 20

@@ -27,7 +27,7 @@ fi
 fi
 
 if [ ! -f ./mX_timer.cpp ] ; then
-dir=../utils
+dir=../../utils
 cp ${dir}/mX_timer.h .
 cp ${dir}/mX_timer.cpp .
 
