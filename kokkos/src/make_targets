@@ -1,0 +1,70 @@
+
+OBJS = \
+	mX_source.o \
+	mX_DAE.o \
+        mX_device.o \
+        mX_lin_device.o \
+        mX_nl_device.o \
+	mX_parms.o \
+	mX_sparse_matrix.o \
+	mX_vector.o \
+        mX_solver.o \
+	mX_parser.o \
+	YAML_Doc.o \
+	YAML_Element.o
+
+YAML_FILES = \
+	YAML_Doc.cpp \
+	YAML_Doc.hpp \
+	YAML_Element.cpp \
+	YAML_Element.hpp
+
+UTIL_OBJS = \
+	mX_timer.o
+
+UTIL_FILES = \
+	mX_timer.cpp \
+	mX_timer.h
+
+MAIN_OBJ = \
+	mX_ckt_simulator.o
+
+MINIXYCE_INFO = 1
+
+vpath %.cpp ../utils
+
+all:common_files miniXyce.x generate_info
+
+miniXyce.x:$(MAIN_OBJ) $(OBJS) $(UTIL_OBJS) $(OPTIONAL_OBJS) $(YAML_FILES)
+	$(INSTRUMENT) $(CXX) $(CXXFLAGS) $(CPPFLAGS) $(MAIN_OBJ) $(OBJS) $(UTIL_OBJS) $(OPTIONAL_OBJS) -o miniXyce.x $(LDFLAGS) $(OPTIONAL_LIBS) $(LIBS)
+
+common_files:
+	./get_common_files
+
+generate_info:
+	./generate_info_header "$(CXX)" "$(CXXFLAGS)" "miniXyce" "MINIXYCE"
+
+test : all
+	$(EXEC) ./miniXyce.x -c tests/cir1.net
+	$(EXEC) ./miniXyce.x -c tests/cir2.net
+	$(EXEC) ./miniXyce.x -c tests/cir3.net
+	$(EXEC) ./miniXyce.x -c tests/cir4.net
+	$(EXEC) ./miniXyce.x -c tests/cir5.net
+	$(EXEC) ./miniXyce.x -c tests/cir6.net
+	perl ./tests/compareResults.pl "./tests/"
+
+%.o:%.cpp *.hpp
+	$(CXX) $(CXXFLAGS) $(CPPFLAGS) -DMINIXYCE_INFO=$(MINIXYCE_INFO) -c $<
+
+%.o:%.c *.h
+	$(CC) $(CFLAGS) $(CPPFLAGS) -c $<
+
+clean:
+	rm -f *.o *.a *.x *.linkinfo $(YAML_FILES) $(UTIL_FILES) *params.txt miniXyce_info.hpp 
+
+testclean: clean
+	rm -rf tests
+
+realclean: testclean
+	rm -f gmon.out gprof.* *~ *.yaml 
+
