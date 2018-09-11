@@ -50,6 +50,12 @@ USE_MPI = -DHAVE_MPI -DMPICH_IGNORE_CXX_SEEK
 
 #MPI_INC = -I/usr/MPICH/SDK.gcc/include
 
+# Build with Kokkos or not?
+# - Specify the install directory of Kokkos
+KOKKOS_PATH = /home/hkthorn/Mantevo/kokkos/GCC_4.9.3_BUILD/install
+KOKKOS_LIB = -L$(KOKKOS_PATH)/lib -lkokkos
+KOKKOS_INC = -I$(KOKKOS_PATH)/include
+ 
 # Specify C++ compiler optimization flags (if any)
 #  Typically some reasonably high level of optimization should be used to 
 #  enhance performance.
@@ -79,10 +85,10 @@ CPP_OPT_FLAGS = -O3 -std=c++11 -funroll-all-loops
 
 ################### Derived Quantities (no modification required) ##############
 
-CXXFLAGS = $(CPP_OPT_FLAGS) $(MPI_INC) 
+CXXFLAGS = $(CPP_OPT_FLAGS) $(MPI_INC) $(KOKKOS_LIB) 
 
 CPPFLAGS = $(USE_MPI)
 
-LDFLAGS = $(MPI_LIB) $(SYS_LIB)
+LDFLAGS = $(MPI_LIB) $(KOKKOS_LIB) $(SYS_LIB)
 
 include make_targets

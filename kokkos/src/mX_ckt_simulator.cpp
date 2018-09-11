@@ -47,6 +47,7 @@
 #include "YAML_Element.hpp"
 #include "YAML_Doc.hpp"
 
+#include <Kokkos_Core.hpp>
 
 #ifdef HAVE_MPI
 #include "mpi.h"
@@ -70,6 +71,11 @@ int main(int argc, char* argv[])
   MPI_Comm_rank(MPI_COMM_WORLD, &pid);
 #endif
   double sim_start = mX_timer();
+
+  Kokkos::initialize (argc, argv);
+
+  printf ("Hello World on Kokkos execution space %s\n",
+          typeid (Kokkos::DefaultExecutionSpace).name ());
 
   // initialize YAML doc
   YAML_Doc doc("miniXyce","1.1");
@@ -388,6 +394,9 @@ int main(int argc, char* argv[])
   // Clean up
   mX_DAE_utils::destroy( dae );
 
+  // You must call finalize() after you are done using Kokkos.
+  Kokkos::finalize ();
+ 
 #ifdef HAVE_MPI  
   MPI_Finalize();
 #endif
